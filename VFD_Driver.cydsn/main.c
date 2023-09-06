@@ -56,7 +56,7 @@ int main(void)
     }
     
     CyDelay(500);
-
+    
     for(uint8_t i = 0; i < 10; i++)
     {
         DISPLAY_WRITE(BS);
@@ -129,6 +129,62 @@ int main(void)
         
         CyDelay(1500);
 
+        DISPLAY_WRITE(LF);
+        
+        for(uint8_t i = 0; i < 26; i++)
+        {
+            DISPLAY_WRITE('a' + i);
+            CyDelay(50);
+        }
+        
+        CyDelay(500);
+        
+        for(uint8_t i = 0; i < 10; i++)
+        {
+            DISPLAY_WRITE(BS);
+            CyDelay(50);
+        }
+        
+         CyDelay(500);
+
+        for(uint8_t i = 0; i < 10; i++)
+        {
+            DISPLAY_WRITE(FS);
+            CyDelay(50);
+        }
+        
+        for(uint8_t i = 0; i < 10; i++)
+        {
+            DISPLAY_WRITE('0' + i);
+        }
+        
+        CyDelay(500);
+        
+        for(uint8_t i = 0; i < 10; i++)
+        {
+            DISPLAY_WRITE(FS);
+            CyDelay(50);
+        }
+        
+        DISPLAY_WRITE('#');
+        
+        DISPLAY_WRITE(CR);
+        DISPLAY_WRITE('!');
+        
+        CyDelay(500);
+
+        for(uint8_t i = 0; i < 10; i++)
+        {
+            DISPLAY_WRITE(BS);
+            CyDelay(100);
+        }
+        
+        CyDelay(500);
+        
+        DISPLAY_WRITE('*');
+        
+        CyDelay(500);
+        
         DISPLAY_WRITE(LF);
                 
     }
