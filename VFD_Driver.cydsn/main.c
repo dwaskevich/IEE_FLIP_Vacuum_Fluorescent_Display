@@ -26,7 +26,6 @@
             A0_Write(0); \
             DataBus_Write(LF); \
             WR_STROBE(WRITE_DELAY); \
-            A0_Write(0); \
 } while (0)
             
 #define DISPLAY_WRITE(x)    do{ \
@@ -39,6 +38,7 @@
 #define CLR (0x00)
 #define BS  (0x08)
 #define FS  (0x09)
+#define CTRL_G  (0x07)
 
 int main(void)
 {
@@ -101,9 +101,33 @@ int main(void)
     
     DISPLAY_WRITE('*');
     
-    CyDelay(500);
+    CyDelay(1500);
     
     DISPLAY_WRITE(LF);
+    
+    UART_Start();    
+    UART_PutString("UART started ...\r\n");
+    
+    while(1)
+    {
+        char rxData;
+        uint8_t readData;
+
+        if(UART_GetRxBufferSize())
+        {
+            rxData = UART_GetChar();
+            DISPLAY_WRITE(rxData);
+            UART_PutChar(rxData);
+            RD_Write(0);
+            CyDelay(5);
+            readData = DataBus_Read();
+            RD_Write(1);
+            UART_PutString("\r\nRead data = ");
+            UART_PutCRLF(readData);
+            if(CTRL_G == rxData)
+                CLEAR_DISPLAY();
+        }
+    }
 
     for(;;)
     {

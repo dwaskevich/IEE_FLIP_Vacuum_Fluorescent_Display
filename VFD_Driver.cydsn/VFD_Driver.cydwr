@@ -251,9 +251,12 @@
   <Data key="DataVersionKey" value="2" />
   <Group key="DWRInstGuidMapping">
     <Group key="Pin">
-      <Data key="0ca09bc5-c0be-42d2-a534-4b3e712c0246" value="VFD_DataBus" />
+      <Data key="0ca09bc5-c0be-42d2-a534-4b3e712c0246" value="DataBus" />
+      <Data key="9f531e87-50b3-45c2-9981-7c3f35fcc034" value="RD" />
+      <Data key="1425177d-0d0e-4468-8bcc-e638e5509a9b" value="Rx_1" />
       <Data key="af9a950b-18ac-41a8-bf1b-00042dbaca87" value="WR" />
       <Data key="e851a3b9-efb8-48be-bbb8-b303b216c393" value="UserLED" />
+      <Data key="ed092b9b-d398-4703-be89-cebf998501f6" value="Tx_1" />
       <Data key="eea6260f-9732-48e2-abd5-5d384b75eeb3" value="A0" />
       <Data key="efc3320b-56bd-4865-bd03-40c76639e30e" value="CS" />
     </Group>
@@ -3368,6 +3371,16 @@
         <Data key="Port Format" value="2,7" />
       </Group>
     </Group>
+    <Group key="9f531e87-50b3-45c2-9981-7c3f35fcc034">
+      <Group key="0">
+        <Data key="Port Format" value="4,0" />
+      </Group>
+    </Group>
+    <Group key="1425177d-0d0e-4468-8bcc-e638e5509a9b">
+      <Group key="0">
+        <Data key="Port Format" value="3,0" />
+      </Group>
+    </Group>
     <Group key="af9a950b-18ac-41a8-bf1b-00042dbaca87">
       <Group key="0">
         <Data key="Port Format" value="12,4" />
@@ -3376,6 +3389,11 @@
     <Group key="e851a3b9-efb8-48be-bbb8-b303b216c393">
       <Group key="0">
         <Data key="Port Format" value="6,7" />
+      </Group>
+    </Group>
+    <Group key="ed092b9b-d398-4703-be89-cebf998501f6">
+      <Group key="0">
+        <Data key="Port Format" value="3,1" />
       </Group>
     </Group>
     <Group key="eea6260f-9732-48e2-abd5-5d384b75eeb3">
