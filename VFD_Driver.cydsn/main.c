@@ -1,5 +1,32 @@
 /* ========================================
  *
+ * File Name:   main.c
+ * 
+ * Date:    5-Sept-2023
+ * Author:  David Waskevich
+ *
+ * Description: Test application for IEE FLIP 03600-20-040 Vacuum
+ *              Fluorescent Display.
+ * 
+ * Hardware:    Sparkfun FreeSOC2 (https://www.sparkfun.com/products/retired/13714)
+ *              PSoC5LP/CortexM3-based (enhanced) Arduino-style development kit
+ *
+ * IDE:         PSoC Creator 4.3
+ *
+ * Wiring:      8-bit parallel data bus to display --> P2[7:0] (JP5 header)
+ *              /CS - P6[4]  (JP7, pin 3)
+ *               A0 - P12[5] (JP7, pin 2)
+ *              /WR - P12[4] (JP7, pin 1)
+ *              /RD - not used
+ * 
+ * Usage:       #include <iee_flip_03600_20_040.h>
+ *              NOTE - arbitrarily chose BELL (ctrl-G) character to reset display.
+ *
+ * Update 7-Sept-2023:
+ *		- added iee_flip_03600_20_040.h and iee_flip_03600_20_040.c source files
+ *		- updated test script in main.c
+ *
+ *
  * Copyright YOUR COMPANY, THE YEAR
  * All Rights Reserved
  * UNPUBLISHED, LICENSED SOFTWARE.
@@ -10,35 +37,10 @@
  * ========================================
 */
 #include "project.h"
+#include "iee_flip_03600_20_040.h"
+#include <stdio.h>
 
-#define WRITE_DELAY (1u)
-
-#define WR_STROBE(x)  do{ \
-            WR_Write(0); \
-            WR_Write(1); \
-            CyDelay(x); \
-} while (0)
-            
-#define CLEAR_DISPLAY() do{ \
-            A0_Write(1); \
-            DataBus_Write(CLR); \
-            WR_STROBE(WRITE_DELAY); \
-            A0_Write(0); \
-            DataBus_Write(LF); \
-            WR_STROBE(WRITE_DELAY); \
-} while (0)
-            
-#define DISPLAY_WRITE(x)    do{ \
-            DataBus_Write(x); \
-            WR_STROBE(WRITE_DELAY); \
-} while (0)
-            
-#define CR  (0x0d)
-#define LF  (0x0a)
-#define CLR (0x00)
-#define BS  (0x08)
-#define FS  (0x09)
-#define CTRL_G  (0x07)
+char printBuffer[80];
 
 int main(void)
 {
@@ -67,7 +69,7 @@ int main(void)
 
     for(uint8_t i = 0; i < 10; i++)
     {
-        DISPLAY_WRITE(FS);
+        DISPLAY_WRITE(TAB);
         CyDelay(100);
     }
     
@@ -80,12 +82,11 @@ int main(void)
     
     for(uint8_t i = 0; i < 10; i++)
     {
-        DISPLAY_WRITE(FS);
+        DISPLAY_WRITE(TAB);
         CyDelay(100);
     }
     
-    DISPLAY_WRITE('#');
-    
+    DISPLAY_WRITE('$');
     DISPLAY_WRITE(CR);
     DISPLAY_WRITE('!');
     
@@ -108,6 +109,20 @@ int main(void)
     UART_Start();    
     UART_PutString("UART started ...\r\n");
     
+    VFD_PositionCursor(16);
+    uint16_t retVal = VFD_PutString("this is a test");
+    sprintf(printBuffer, "Return value = %d", retVal);
+    UART_PutString(printBuffer);
+    
+    VFD_PositionCursor(0);
+    VFD_PutString("Back home!");
+    
+    VFD_PositionCursor(33);
+    VFD_SetEndOfLineWrap(EOL_STOP);
+    VFD_PutString("Overrun end of line");
+    
+    VFD_SetEndOfLineWrap(EOL_WRAP);
+    
     while(1)
     {
         char rxData;
@@ -118,6 +133,8 @@ int main(void)
             rxData = UART_GetChar();
             DISPLAY_WRITE(rxData);
             UART_PutChar(rxData);
+            sprintf(printBuffer, " (0x%02x)", rxData);
+            UART_PutString(printBuffer);
             RD_Write(0);
             CyDelay(5);
             readData = DataBus_Read();
@@ -126,6 +143,15 @@ int main(void)
             UART_PutCRLF(readData);
             if(CTRL_G == rxData)
                 CLEAR_DISPLAY();
+        }
+        
+        if(0 == User_BTN_Read())
+        {
+            CyDelay(150);
+            TEST_Write(User_BTN_Read());
+            while(0 == User_BTN_Read())
+            ;
+            TEST_Write(1);
         }
     }
 
@@ -143,7 +169,7 @@ int main(void)
 
         for(uint8_t i = 0; i < 2; i++)
         {
-            DISPLAY_WRITE(FS);
+            DISPLAY_WRITE(TAB);
         }
         
         for(uint8_t i = 0; i < 10; i++)
@@ -173,7 +199,7 @@ int main(void)
 
         for(uint8_t i = 0; i < 10; i++)
         {
-            DISPLAY_WRITE(FS);
+            DISPLAY_WRITE(TAB);
             CyDelay(50);
         }
         
@@ -186,7 +212,7 @@ int main(void)
         
         for(uint8_t i = 0; i < 10; i++)
         {
-            DISPLAY_WRITE(FS);
+            DISPLAY_WRITE(TAB);
             CyDelay(50);
         }
         
