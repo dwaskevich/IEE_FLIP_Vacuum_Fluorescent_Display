@@ -9,8 +9,8 @@
  *              Display w/8-bit parallel interface.
  *
  * Usage:       #include "iee_flip_03600_20_040.h"
- *              Note - low-level hardware drivers based on Cypress/Infineon PSoC5LP
- *                  CortexM3 microcontroller and SparkFun FreeSOC2 Arduino-style kit.
+ *              Note - low-level hardware drivers should be implemented in
+ *                  base_hardware.c/.h
  *
  * Hardware:    IEE FLIP 03600-20-040 Vacuum Fluorescent Display
  *              Model: 03600-20-040
@@ -83,26 +83,39 @@
 
 #include "iee_flip_03600_20_040.h"
 
+/* low-level APIs */
+void toggleStrobe(uint8_t delay_ms)
+{
+    /* per 8041 data sheet, min WR pulse is 250ns ... GPIO API is slow enough (~575ns measured on oscilloscope) */
+    WR_Write(0);
+    WR_Write(1);
+    CyDelay(delay_ms);
+}
+
+
+/* high-level APIs */
+void VFD_WriteDisplay(uint8_t value)
+{
+    /* general 8-bit write ... per 8041 data sheet, data setup time to trailing (rising) edge of /WR is 150ns */
+    DataBus_Write(value);
+    toggleStrobe(WRITE_DELAY_MS);
+}
+
 uint16_t VFD_PositionCursor(uint8_t position)
 {
     if(position > LINE_LENGTH)
         return 1;
-    DISPLAY_WRITE(CR);
+    VFD_WriteDisplay(CR);
     for(uint8_t i = 0; i < position; i++)
     {
-        DISPLAY_WRITE(TAB);        
+        VFD_WriteDisplay(TAB);        
     }
     return 0;
 }
 
 void VFD_PutChar(char value)
 {
-    DISPLAY_WRITE(value);
-}
-
-void VFD_WriteByte(uint8_t value)
-{
-    DISPLAY_WRITE(value);
+    VFD_WriteDisplay(value);
 }
 
 uint16_t VFD_PutString(char *str)
@@ -113,20 +126,25 @@ uint16_t VFD_PutString(char *str)
     uint8_t i = 0;
     while('\0' != str[i])
     {
-        DISPLAY_WRITE(str[i++]);
+        VFD_WriteDisplay(str[i++]);
     }
     return i;
 }
 
 void VFD_ClearDisplay(void)
 {
-    CLEAR_DISPLAY();
+    A0_Write(1);
+    DataBus_Write(CLR);
+    toggleStrobe(WRITE_DELAY_MS);
+    A0_Write(0);
+    DataBus_Write(LF);
+    toggleStrobe(WRITE_DELAY_MS);
 }
 
 /* End of line modes are EOL_WRAP & EOL_STOP */
 void VFD_SetEndOfLineWrap(uint8_t mode)
 {
-    DISPLAY_WRITE(mode);
+    VFD_WriteDisplay(mode);
 }
 
 

@@ -26,6 +26,10 @@
  *		- added iee_flip_03600_20_040.h and iee_flip_03600_20_040.c source files
  *		- updated test script in main.c
  *
+ * Update 16-Sept-2023:
+ *		- added low-level hardware-dependent drivers for parallel port and ctrl
+ *        lines (to simplify hardware independence/migration)
+ *
  *
  * Copyright YOUR COMPANY, THE YEAR
  * All Rights Reserved
@@ -50,18 +54,18 @@ int main(void)
     
     CS_Write(0);
     
-    CLEAR_DISPLAY();
+    VFD_ClearDisplay();
     
     for(uint8_t i = 0; i < 26; i++)
     {
-        DISPLAY_WRITE('a' + i);
+        VFD_WriteDisplay('a' + i);
     }
     
     CyDelay(500);
     
     for(uint8_t i = 0; i < 10; i++)
     {
-        DISPLAY_WRITE(BS);
+        VFD_WriteDisplay(BS);
         CyDelay(100);
     }
     
@@ -69,42 +73,42 @@ int main(void)
 
     for(uint8_t i = 0; i < 10; i++)
     {
-        DISPLAY_WRITE(TAB);
+        VFD_WriteDisplay(TAB);
         CyDelay(100);
     }
     
     for(uint8_t i = 0; i < 10; i++)
     {
-        DISPLAY_WRITE('0' + i);
+        VFD_WriteDisplay('0' + i);
     }
     
     CyDelay(500);
     
     for(uint8_t i = 0; i < 10; i++)
     {
-        DISPLAY_WRITE(TAB);
+        VFD_WriteDisplay(TAB);
         CyDelay(100);
     }
     
-    DISPLAY_WRITE('$');
-    DISPLAY_WRITE(CR);
-    DISPLAY_WRITE('!');
+    VFD_WriteDisplay('$');
+    VFD_WriteDisplay(CR);
+    VFD_WriteDisplay('!');
     
     CyDelay(500);
 
     for(uint8_t i = 0; i < 10; i++)
     {
-        DISPLAY_WRITE(BS);
+        VFD_WriteDisplay(BS);
         CyDelay(100);
     }
     
     CyDelay(500);
     
-    DISPLAY_WRITE('*');
+    VFD_WriteDisplay('*');
     
     CyDelay(1500);
     
-    DISPLAY_WRITE(LF);
+    VFD_WriteDisplay(LF);
     
     UART_Start();    
     UART_PutString("UART started ...\r\n");
@@ -131,7 +135,7 @@ int main(void)
         if(UART_GetRxBufferSize())
         {
             rxData = UART_GetChar();
-            DISPLAY_WRITE(rxData);
+            VFD_WriteDisplay(rxData);
             UART_PutChar(rxData);
             sprintf(printBuffer, " (0x%02x)", rxData);
             UART_PutString(printBuffer);
@@ -142,7 +146,7 @@ int main(void)
             UART_PutString("\r\nRead data = ");
             UART_PutCRLF(readData);
             if(CTRL_G == rxData)
-                CLEAR_DISPLAY();
+                VFD_ClearDisplay();
         }
         
         if(0 == User_BTN_Read())
@@ -162,28 +166,28 @@ int main(void)
         
         for(uint8_t i = 0; i < 26; i++)
         {
-            DISPLAY_WRITE('a' + i);
+            VFD_WriteDisplay('a' + i);
         }
         
         CyDelay(1500);
 
         for(uint8_t i = 0; i < 2; i++)
         {
-            DISPLAY_WRITE(TAB);
+            VFD_WriteDisplay(TAB);
         }
         
         for(uint8_t i = 0; i < 10; i++)
         {
-            DISPLAY_WRITE('0' + i);
+            VFD_WriteDisplay('0' + i);
         }
         
         CyDelay(1500);
 
-        DISPLAY_WRITE(LF);
+        VFD_WriteDisplay(LF);
         
         for(uint8_t i = 0; i < 26; i++)
         {
-            DISPLAY_WRITE('a' + i);
+            VFD_WriteDisplay('a' + i);
             CyDelay(50);
         }
         
@@ -191,7 +195,7 @@ int main(void)
         
         for(uint8_t i = 0; i < 10; i++)
         {
-            DISPLAY_WRITE(BS);
+            VFD_WriteDisplay(BS);
             CyDelay(50);
         }
         
@@ -199,43 +203,43 @@ int main(void)
 
         for(uint8_t i = 0; i < 10; i++)
         {
-            DISPLAY_WRITE(TAB);
+            VFD_WriteDisplay(TAB);
             CyDelay(50);
         }
         
         for(uint8_t i = 0; i < 10; i++)
         {
-            DISPLAY_WRITE('0' + i);
+            VFD_WriteDisplay('0' + i);
         }
         
         CyDelay(500);
         
         for(uint8_t i = 0; i < 10; i++)
         {
-            DISPLAY_WRITE(TAB);
+            VFD_WriteDisplay(TAB);
             CyDelay(50);
         }
         
-        DISPLAY_WRITE('#');
+        VFD_WriteDisplay('#');
         
-        DISPLAY_WRITE(CR);
-        DISPLAY_WRITE('!');
+        VFD_WriteDisplay(CR);
+        VFD_WriteDisplay('!');
         
         CyDelay(500);
 
         for(uint8_t i = 0; i < 10; i++)
         {
-            DISPLAY_WRITE(BS);
+            VFD_WriteDisplay(BS);
             CyDelay(100);
         }
         
         CyDelay(500);
         
-        DISPLAY_WRITE('*');
+        VFD_WriteDisplay('*');
         
         CyDelay(500);
         
-        DISPLAY_WRITE(LF);
+        VFD_WriteDisplay(LF);
                 
     }
 }
