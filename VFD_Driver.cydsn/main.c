@@ -45,6 +45,8 @@
 #include <stdio.h>
 
 char printBuffer[80];
+char lineBuffer[80];
+uint8_t lineBufferIndex = 0;
 
 int main(void)
 {
@@ -127,6 +129,36 @@ int main(void)
     
     VFD_SetEndOfLineWrap(EOL_WRAP);
     
+    CyDelay(1000);
+    
+    VFD_PositionCursor(16);
+    VFD_ClearToEnd();
+    
+//    VFD_ClearFromPosition(16);
+    
+    VFD_PutString("Clearing screen ...");
+    CyDelay(2000);
+    VFD_ClearDisplay();
+    
+    VFD_SetEndOfLineWrap(EOL_STOP);
+    VFD_PositionCursor(LINE_LENGTH - 1);
+    
+    lineBuffer[lineBufferIndex++] = 'h';
+    lineBuffer[lineBufferIndex++] = 'e';
+    lineBuffer[lineBufferIndex++] = 'l';
+    lineBuffer[lineBufferIndex++] = 'l';
+    lineBuffer[lineBufferIndex++] = 'o';
+    
+    uint8_t j = lineBufferIndex - 1;
+    VFD_PutChar(lineBuffer[j--]);
+    do
+    {
+        VFD_PutChar(BS);
+        VFD_PutChar(lineBuffer[j]);
+        VFD_PutChar(BS);
+    }
+    while(0 != j--);
+    
     while(1)
     {
         char rxData;
@@ -137,13 +169,16 @@ int main(void)
             rxData = UART_GetChar();
             VFD_WriteDisplay(rxData);
             UART_PutChar(rxData);
-            sprintf(printBuffer, " (0x%02x)", rxData);
+            sprintf(printBuffer, "--> 0x%02x", rxData);
             UART_PutString(printBuffer);
             readData = VFD_ReadDisplay();
             UART_PutString("\r\nRead data = ");
             UART_PutCRLF(readData);
             if(CTRL_G == rxData)
+            {
                 VFD_ClearDisplay();
+                UART_PutString("\x1b[2J\x1b[;H");
+            }
         }
         
         if(0 == User_BTN_Read())

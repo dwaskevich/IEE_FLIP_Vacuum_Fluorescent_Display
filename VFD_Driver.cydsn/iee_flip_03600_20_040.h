@@ -42,6 +42,8 @@
 #define EOL_WRAP    (0x11)
 #define EOL_STOP    (0x12)
 
+#define ESCAPE      (0x1b)
+
 
 /***********************************
  * Function prototypes
@@ -59,6 +61,8 @@ uint16_t VFD_PositionCursor(uint8_t position);
 void VFD_PutChar(char value);
 uint16_t VFD_PutString(char *str);
 void VFD_ClearDisplay(void);
+void VFD_ClearToEnd(void);
+void VFD_ClearFromPosition(uint8_t position);
 void VFD_SetEndOfLineWrap(uint8_t mode);
 void VFD_Test(uint8_t value);
 
