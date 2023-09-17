@@ -52,7 +52,7 @@ int main(void)
 
     /* Place your initialization/startup code here (e.g. MyInst_Start()) */
     
-    CS_Write(0);
+    VFD_EnableDisplay();
     
     VFD_ClearDisplay();
     
@@ -139,10 +139,7 @@ int main(void)
             UART_PutChar(rxData);
             sprintf(printBuffer, " (0x%02x)", rxData);
             UART_PutString(printBuffer);
-            RD_Write(0);
-            CyDelay(5);
-            readData = DataBus_Read();
-            RD_Write(1);
+            readData = VFD_ReadDisplay();
             UART_PutString("\r\nRead data = ");
             UART_PutCRLF(readData);
             if(CTRL_G == rxData)
@@ -152,10 +149,10 @@ int main(void)
         if(0 == User_BTN_Read())
         {
             CyDelay(150);
-            TEST_Write(User_BTN_Read());
+            VFD_Test(User_BTN_Read());
             while(0 == User_BTN_Read())
             ;
-            TEST_Write(1);
+            VFD_Test(1);
         }
     }
 

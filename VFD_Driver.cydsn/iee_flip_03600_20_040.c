@@ -31,10 +31,10 @@
  *              26-pin dual-row .1" interface header
  *              Intel 8041-based interface
  *
- *              No control code implementation that I could determine except
- *                  0x00 ... which appears to reset controller.
+ *              No control code implementation that I could determine except 0x00, which
+ *                  appears to reset the controller.
  *              Read (/RD active) returns value of last character written. Not much value
- *                  so not implemented here.
+ *                  but implemented here nonetheless.
  *              Carriage Return (CR/0x0D/ctrl-M) returns cursor/current position to beginning
  *                  of line but does not erase existing characters already shown on display.
  *              Line Feed (LF/0x0A/ctrl-J) returns cursor/current position to beginning of
@@ -81,24 +81,45 @@
  * ========================================
 */
 
+#include "base_hardware.h"
 #include "iee_flip_03600_20_040.h"
 
 /* low-level APIs */
 void toggleStrobe(uint8_t delay_ms)
 {
     /* per 8041 data sheet, min WR pulse is 250ns ... GPIO API is slow enough (~575ns measured on oscilloscope) */
-    WR_Write(0);
-    WR_Write(1);
-    CyDelay(delay_ms);
+    write_nWR(0);
+    write_nWR(1);
+    hw_delay_ms(delay_ms);
 }
 
 
 /* high-level APIs */
+void VFD_EnableDisplay(void)
+{
+    write_nCS(ENABLE_DISPLAY);
+}
+
+void VFD_DisableDisplay(void)
+{
+    write_nCS(DISABLE_DISPLAY);
+}
+
 void VFD_WriteDisplay(uint8_t value)
 {
     /* general 8-bit write ... per 8041 data sheet, data setup time to trailing (rising) edge of /WR is 150ns */
-    DataBus_Write(value);
+    write_DataBus(value);
     toggleStrobe(WRITE_DELAY_MS);
+}
+
+uint8_t VFD_ReadDisplay(void)
+{
+    uint8_t data;
+    write_nRD(0);
+    hw_delay_ms(5);
+    data = read_DataBus();
+    write_nRD(1);
+    return data;
 }
 
 uint16_t VFD_PositionCursor(uint8_t position)
@@ -133,11 +154,11 @@ uint16_t VFD_PutString(char *str)
 
 void VFD_ClearDisplay(void)
 {
-    A0_Write(1);
-    DataBus_Write(CLR);
+    write_A0(1);
+    write_DataBus(CLR);
     toggleStrobe(WRITE_DELAY_MS);
-    A0_Write(0);
-    DataBus_Write(LF);
+    write_A0(0);
+    write_DataBus(LF);
     toggleStrobe(WRITE_DELAY_MS);
 }
 
@@ -145,6 +166,11 @@ void VFD_ClearDisplay(void)
 void VFD_SetEndOfLineWrap(uint8_t mode)
 {
     VFD_WriteDisplay(mode);
+}
+
+void VFD_Test(uint8_t value)
+{
+    write_TEST(value);
 }
 
 

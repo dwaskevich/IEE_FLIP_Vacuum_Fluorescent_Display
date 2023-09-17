@@ -5,7 +5,7 @@
  * Date:    16-Sept-2023
  * Author:  David Waskevich
  *
- * Description: header file low-level hardware interface
+ * Description: header file for low-level hardware-dependent interface
  *
  *
  * Copyright YOUR COMPANY, THE YEAR
@@ -17,5 +17,17 @@
  *
  * ========================================
 */
+
+#include "project.h"
+
+void hw_delay_ms(uint8_t value);
+void write_nWR(uint8_t value);
+void write_nCS(uint8_t value);
+void write_A0(uint8_t value);
+void write_nRD(uint8_t value);
+void write_TEST(uint8_t value);
+uint8_t read_DataBus(void);
+void write_DataBus(uint8_t value);
+
 
 /* [] END OF FILE */

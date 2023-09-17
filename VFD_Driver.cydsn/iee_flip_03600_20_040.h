@@ -28,6 +28,9 @@
 /* time between successive writes ... somewhat arbitrary ... trial and error ... 750usec would probably be better */
 #define WRITE_DELAY_MS (1u)
 
+#define ENABLE_DISPLAY  (0u)
+#define DISABLE_DISPLAY (1u)
+
 /* useful constants */
 #define LINE_LENGTH (40u)
 #define CR          (0x0d)
@@ -48,12 +51,16 @@
 void toggleStrobe(uint8_t writeDelay_ms);
 
 /* high-level APIs */
+void VFD_EnableDisplay(void);
+void VFD_DisableDisplay(void);
 void VFD_WriteDisplay(uint8_t value);
+uint8_t VFD_ReadDisplay(void);
 uint16_t VFD_PositionCursor(uint8_t position);
 void VFD_PutChar(char value);
 uint16_t VFD_PutString(char *str);
 void VFD_ClearDisplay(void);
 void VFD_SetEndOfLineWrap(uint8_t mode);
+void VFD_Test(uint8_t value);
 
 
 /* [] END OF FILE */
