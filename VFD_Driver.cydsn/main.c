@@ -34,6 +34,16 @@
  *		- created "develop" branch
  *      - enhancing driver to handle left and right (crawl/scroll) entry
  *
+ * Update 10-Jan-2024:
+ *		- moved scrolling code from main.c to iee_flip_03600_20_040.c/.h
+ *      - created new functions
+ *      - updated main.c
+ *      - entry mode (LEFT/RIGHT) defined in .h file
+ *          '-> returned to application with VFD_InitializeDisplay() API
+ *      - set up desired INPUT_BUFFER_LENGTH and DISPLAY_LINE_LENGTH in .h file
+ *      - length of history buffer depends on available SRAM
+ *          '-> set NUMBER_PAGES in .h file 
+ *
  *
  * Copyright YOUR COMPANY, THE YEAR
  * All Rights Reserved
@@ -46,60 +56,29 @@
 */
 #include "project.h"
 #include "iee_flip_03600_20_040.h"
-
-#define PRIMARY_ENTRY_MODE  (RIGHT_ENTRY)
-
-/* defining data structure for a "frame" of screen data */
-struct display {
-	uint16_t pageID; /* arbitrary ID ... not used */
-    uint16_t characterCount; /* keeps track of input characters (no limit checking, just rolls over) */
-	uint8_t inputPosition; /* pointer to next available location in input buffer */
-    uint8_t cursorPosition; /* pointer to cursor position on screen */
-    char inputLineBuffer[INPUT_BUFFER_LENGTH + 1]; /* input line buffer */
-};
-
-/* declare storage for display pages (limited by available SRAM) */
-#define NUMBER_PAGES    (200)
-struct display displayHistory[NUMBER_PAGES];
-
-/* declare and assign pointer to display history array */
-struct display *ptrDisplay = displayHistory;
-/* declare a pointer to the line buffer */
-char *ptrLineBuffer;
+#include "stdio.h"
 
 int main(void)
 {
+    char printBuffer[100];
     char rxData;
-    
+    uint8_t entryMode, cursorPosition;
+    uint16_t currentLineBufferID;    
     uint8_t updateDisplayFlag = FALSE;
-    uint8_t entryMode = PRIMARY_ENTRY_MODE;
         
     CyGlobalIntEnable; /* Enable global interrupts. */
     
     /* Place your initialization/startup code here (e.g. MyInst_Start()) */
     
-    /* initialize display history */
-    for(uint8_t i = 0; i < NUMBER_PAGES; i++)
-    {
-        ptrDisplay->pageID = i; /* arbitrary identifier */
-        ptrDisplay->cursorPosition = 0;
-        ptrDisplay->inputPosition = 0;
-        ptrDisplay->characterCount = 0;
-        ptrDisplay->inputLineBuffer[0] = '\0'; /* null-terminated string */
-        ptrDisplay++;
-    }    
-    ptrDisplay = displayHistory; /* reinitialize display history pointer */
+    /* initialize VFD display (returns entry mode defined in .h file) */
+    entryMode = VFD_InitializeDisplay(PRIMARY_ENTRY_MODE);
     
+    /* initialize display history */
+    VFD_InitDisplayHistory();
+
     /* initialize and start UART */
     UART_Start();    
     UART_PutString("\r\nUART started ...\r\n");
-    
-    /* initialize display */
-    VFD_EnableDisplay();    
-    VFD_ClearDisplay();
-    if(RIGHT_ENTRY == entryMode)
-        VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
-    VFD_SetEndOfLineWrap(EOL_STOP);
     
     while(1)
     {
@@ -120,35 +99,17 @@ int main(void)
                     
                 VFD_ClearDisplay(); /* clear display to simulate vertical scroll */
                 
-                if(RIGHT_ENTRY == entryMode)
+                if(RIGHT_ENTRY == entryMode) /* cosmetic (positions underline at end of display) */
                     VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
                 
-                /* move to next page in circular page buffer */
-                ptrDisplay++;
-                /* check for circular rollover */
-                if(ptrDisplay >= &displayHistory[NUMBER_PAGES])
-                {
-                    ptrDisplay = displayHistory; /* reset structure pointer to beginning */
-                }
+                currentLineBufferID = VFD_CreateNewLine();
                 
-                /* initialize/tidy new/next buffer */
-                ptrDisplay->inputPosition = 0;
-                ptrDisplay->cursorPosition = 0;
-                ptrDisplay->characterCount = 0;
-                ptrDisplay->inputLineBuffer[0] = '\0'; /* string EOL null character */
-                
-                /* switch back to LEFT_ENTRY if primary entry is LEFT_ENTRY */
-                if(PRIMARY_ENTRY_MODE == LEFT_ENTRY)
-                    entryMode = LEFT_ENTRY;
+                sprintf(printBuffer, "\r\nLine Buffer ID = %d\r\n", currentLineBufferID);
+                UART_PutString(printBuffer);
             }
             else /* process other characters here */
             {
-                ptrDisplay->characterCount++; /* increment character count */
-                ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition] = rxData; /* store character */
-                ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition + 1] = '\0'; /* mark EOL withh NULL */
-                if(ptrDisplay->characterCount < INPUT_BUFFER_LENGTH)
-                    ptrDisplay->inputPosition++; /* only increment pointer if below buffer limit */
-                
+                currentLineBufferID = VFD_PostCharToHistory(rxData); /* write to display history */
                 updateDisplayFlag = TRUE; /* signal need for display update */
             }
             
@@ -158,42 +119,7 @@ int main(void)
         
         if(TRUE == updateDisplayFlag)
         {
-            switch(entryMode)
-            {
-                case LEFT_ENTRY:
-                    if(ptrDisplay->characterCount < INPUT_BUFFER_LENGTH)
-                        VFD_WriteDisplay(ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition - 1]);
-                    else VFD_WriteDisplay(ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition]);
-                    if(ptrDisplay->cursorPosition < DISPLAY_LINE_LENGTH - 1)
-                        ptrDisplay->cursorPosition++;
-                    else entryMode = LEFT_ENTRY_EOL_SCROLL; /* move to scrolling mode */
-                    
-                    break;
-
-                case LEFT_ENTRY_EOL_SCROLL:
-                    VFD_ClearDisplay();
-                    ptrLineBuffer = ptrDisplay->inputLineBuffer;
-                    if(ptrDisplay->characterCount >= INPUT_BUFFER_LENGTH)
-                        ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
-                    else ptrLineBuffer += (ptrDisplay->inputPosition - DISPLAY_LINE_LENGTH);
-                    VFD_PutString(ptrLineBuffer);
-                    
-                    break;
-                    
-                case RIGHT_ENTRY:
-                    VFD_ClearDisplay();
-                    VFD_PositionCursor((DISPLAY_LINE_LENGTH - 1) - ptrDisplay->cursorPosition);
-                    ptrLineBuffer = ptrDisplay->inputLineBuffer;
-                    if(ptrDisplay->characterCount >= INPUT_BUFFER_LENGTH)
-                        ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
-                    else if(ptrDisplay->characterCount > DISPLAY_LINE_LENGTH)
-                        ptrLineBuffer += (ptrDisplay->characterCount - DISPLAY_LINE_LENGTH);
-                    VFD_PutString(ptrLineBuffer);
-                    if(ptrDisplay->cursorPosition < (DISPLAY_LINE_LENGTH - 1))
-                        ptrDisplay->cursorPosition++;
-                    
-                    break;
-            }
+            cursorPosition = VFD_UpdateDisplay(); /* update/write to display */
             updateDisplayFlag = FALSE;
         }
         
@@ -206,7 +132,6 @@ int main(void)
             UART_PutCRLF('x');
             VFD_Test(1);
         }
-    }
-}
+    }}
 
 /* [] END OF FILE */

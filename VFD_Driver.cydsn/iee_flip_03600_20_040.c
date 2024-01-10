@@ -84,6 +84,15 @@
 #include "base_hardware.h"
 #include "iee_flip_03600_20_040.h"
 
+volatile uint8_t entryMode = PRIMARY_ENTRY_MODE;
+
+struct display displayHistory[NUMBER_PAGES];
+
+/* declare and assign pointer to display history array */
+struct display *ptrDisplay = displayHistory;
+/* declare a pointer to the line buffer */
+char *ptrLineBuffer;
+
 /* low-level APIs */
 void toggleStrobe(uint8_t delay_ms)
 {
@@ -176,5 +185,114 @@ void VFD_Test(uint8_t value)
     write_TEST(value);
 }
 
+/* high-level display scrolling APIs */
+uint8_t VFD_SetEntryMode(uint8_t mode)
+{
+    entryMode = mode;
+    
+    return entryMode;
+}
+
+uint8_t VFD_InitializeDisplay(uint8_t eolMode)
+{
+    VFD_EnableDisplay();    
+    VFD_ClearDisplay();
+    if(RIGHT_ENTRY == eolMode)
+        VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
+    VFD_SetEndOfLineWrap(EOL_STOP);
+    
+    return VFD_SetEntryMode(entryMode);
+}
+
+void VFD_InitDisplayHistory(void)
+{
+    /* initialize display history */
+    for(uint8_t i = 0; i < NUMBER_PAGES; i++)
+    {
+        ptrDisplay->pageID = i; /* page identifier */
+        ptrDisplay->cursorPosition = 0;
+        ptrDisplay->inputPosition = 0;
+        ptrDisplay->characterCount = 0;
+        ptrDisplay->inputLineBuffer[0] = '\0'; /* null-terminated string */
+        ptrDisplay++; /* move to next item */
+    }    
+    ptrDisplay = displayHistory; /* reinitialize display history pointer */
+}
+
+uint16_t VFD_PostCharToHistory(char newData)
+{
+    ptrDisplay->characterCount++; /* increment character count */
+    ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition] = newData; /* store character */
+    ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition + 1] = '\0'; /* mark EOL with NULL */
+    if(ptrDisplay->characterCount < INPUT_BUFFER_LENGTH)
+        ptrDisplay->inputPosition++; /* only increment pointer if below buffer limit */
+    
+    return ptrDisplay->pageID;
+}
+
+uint16_t VFD_CreateNewLine(void)
+{
+    /* move to next page in circular page buffer */
+    ptrDisplay++;
+    /* check for circular rollover */
+    if(ptrDisplay >= &displayHistory[NUMBER_PAGES])
+    {
+        ptrDisplay = displayHistory; /* reset structure pointer to beginning */
+    }
+    
+    /* initialize/tidy new/next buffer */
+    ptrDisplay->inputPosition = 0;
+    ptrDisplay->cursorPosition = 0;
+    ptrDisplay->characterCount = 0;
+    ptrDisplay->inputLineBuffer[0] = '\0'; /* string EOL null character */
+    
+    /* switch back to LEFT_ENTRY if primary entry is LEFT_ENTRY */
+    if(PRIMARY_ENTRY_MODE == LEFT_ENTRY)
+        entryMode = LEFT_ENTRY;
+    
+    return ptrDisplay->pageID;
+}
+
+uint8_t VFD_UpdateDisplay(void)
+{
+    switch(entryMode)
+{
+    case LEFT_ENTRY:
+        if(ptrDisplay->characterCount < INPUT_BUFFER_LENGTH)
+            VFD_WriteDisplay(ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition - 1]);
+        else VFD_WriteDisplay(ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition]);
+        if(ptrDisplay->cursorPosition < DISPLAY_LINE_LENGTH - 1)
+            ptrDisplay->cursorPosition++;
+        else entryMode = LEFT_ENTRY_EOL_SCROLL; /* move to scrolling mode */
+        
+        break;
+
+    case LEFT_ENTRY_EOL_SCROLL:
+        VFD_ClearDisplay();
+        ptrLineBuffer = ptrDisplay->inputLineBuffer;
+        if(ptrDisplay->characterCount >= INPUT_BUFFER_LENGTH)
+            ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
+        else ptrLineBuffer += (ptrDisplay->inputPosition - DISPLAY_LINE_LENGTH);
+        VFD_PutString(ptrLineBuffer);
+        
+        break;
+        
+    case RIGHT_ENTRY:
+        VFD_ClearDisplay();
+        VFD_PositionCursor((DISPLAY_LINE_LENGTH - 1) - ptrDisplay->cursorPosition);
+        ptrLineBuffer = ptrDisplay->inputLineBuffer;
+        if(ptrDisplay->characterCount >= INPUT_BUFFER_LENGTH)
+            ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
+        else if(ptrDisplay->characterCount > DISPLAY_LINE_LENGTH)
+            ptrLineBuffer += (ptrDisplay->characterCount - DISPLAY_LINE_LENGTH);
+        VFD_PutString(ptrLineBuffer);
+        if(ptrDisplay->cursorPosition < (DISPLAY_LINE_LENGTH - 1))
+            ptrDisplay->cursorPosition++;
+        
+        break;
+}
+    
+    return ptrDisplay->cursorPosition;
+}
 
 /* [] END OF FILE */
