@@ -34,11 +34,8 @@
 #define DISABLE_DISPLAY (1u)
 
 /* physical limits on input buffer and display size */
-//#define INPUT_BUFFER_LENGTH (80u)
-//#define DISPLAY_LINE_LENGTH (40u)
 #define INPUT_BUFFER_LENGTH (80u)
 #define DISPLAY_LINE_LENGTH (40u)
-
 
 /* useful constants */
 #define CR          (0x0d)
@@ -55,6 +52,7 @@
 /* display entry modes (LEFT = Normal, RIGHT = crawl/scroll left) */
 enum EntryMode {
     LEFT_ENTRY,
+    LEFT_ENTRY_EOL_SCROLL,
     RIGHT_ENTRY    
 };
 
