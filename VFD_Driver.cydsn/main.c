@@ -30,6 +30,10 @@
  *		- added low-level hardware-dependent drivers for parallel port and ctrl
  *        lines (to simplify hardware independence/migration)
  *
+ * Update 5-Jan-2024:
+ *		- created "develop" branch
+ *      - enhancing driver to handle left and right (crawl/scroll) entry
+ *
  *
  * Copyright YOUR COMPANY, THE YEAR
  * All Rights Reserved
@@ -42,108 +46,155 @@
 */
 #include "project.h"
 #include "iee_flip_03600_20_040.h"
-#include <stdio.h>
+//#include <stdio.h>
 
-char printBuffer[80];
+#define PRIMARY_ENTRY_MODE  (LEFT_ENTRY)
+
+struct display {
+	uint16_t pageID;
+    uint16_t characterCount;
+	uint8_t inputPosition;
+    uint8_t cursorPosition;
+    char inputLineBuffer[INPUT_BUFFER_LENGTH + 1];
+};
+
+/* declare storage for display pages (limited by available SRAM) */
+#define NUMBER_PAGES    (5)
+struct display displayHistory[NUMBER_PAGES];
+
+/* declare and assign pointer to display history array */
+struct display *ptrDisplay = displayHistory;
+/* declare a pointer to the line buffer */
+char *ptrLineBuffer;
 
 int main(void)
 {
+//    char printBuffer[80]; /* print buffer for sprintf() */
+    char rxData;
+    
+    uint8_t updateDisplayFlag = FALSE;
+    uint8_t entryMode = PRIMARY_ENTRY_MODE;
+        
     CyGlobalIntEnable; /* Enable global interrupts. */
-
+    
     /* Place your initialization/startup code here (e.g. MyInst_Start()) */
     
-    VFD_EnableDisplay();
-    
-    VFD_ClearDisplay();
-    
-    for(uint8_t i = 0; i < 26; i++)
+    /* initialize display history */
+    for(uint8_t i = 0; i < NUMBER_PAGES; i++)
     {
-        VFD_WriteDisplay('a' + i);
-    }
+        ptrDisplay->pageID = i; /* arbitrary identifier */
+        ptrDisplay->cursorPosition = 0;
+        ptrDisplay->inputPosition = 0;
+        ptrDisplay->characterCount = 0;
+        ptrDisplay->inputLineBuffer[0] = '\0'; /* null-terminated string */
+        ptrDisplay++;
+    }    
+    ptrDisplay = displayHistory; /* reinitialize display history pointer */
     
-    CyDelay(500);
-    
-    for(uint8_t i = 0; i < 10; i++)
-    {
-        VFD_WriteDisplay(BS);
-        CyDelay(100);
-    }
-    
-     CyDelay(500);
-
-    for(uint8_t i = 0; i < 10; i++)
-    {
-        VFD_WriteDisplay(TAB);
-        CyDelay(100);
-    }
-    
-    for(uint8_t i = 0; i < 10; i++)
-    {
-        VFD_WriteDisplay('0' + i);
-    }
-    
-    CyDelay(500);
-    
-    for(uint8_t i = 0; i < 10; i++)
-    {
-        VFD_WriteDisplay(TAB);
-        CyDelay(100);
-    }
-    
-    VFD_WriteDisplay('$');
-    VFD_WriteDisplay(CR);
-    VFD_WriteDisplay('!');
-    
-    CyDelay(500);
-
-    for(uint8_t i = 0; i < 10; i++)
-    {
-        VFD_WriteDisplay(BS);
-        CyDelay(100);
-    }
-    
-    CyDelay(500);
-    
-    VFD_WriteDisplay('*');
-    
-    CyDelay(1500);
-    
-    VFD_WriteDisplay(LF);
-    
+    /* initialize and start UART */
     UART_Start();    
-    UART_PutString("UART started ...\r\n");
+    UART_PutString("\r\nUART started ...\r\n");
     
-    VFD_PositionCursor(16);
-    uint16_t retVal = VFD_PutString("this is a test");
-    sprintf(printBuffer, "Return value = %d", retVal);
-    UART_PutString(printBuffer);
-    
-    VFD_PositionCursor(0);
-    VFD_PutString("Back home!");
-    
-    VFD_PositionCursor(33);
+    /* initialize display */
+    VFD_EnableDisplay();    
+    VFD_ClearDisplay();
     VFD_SetEndOfLineWrap(EOL_STOP);
-    VFD_PutString("Overrun end of line");
-    
-    VFD_SetEndOfLineWrap(EOL_WRAP);
     
     while(1)
     {
-        char rxData;
-        uint8_t readData;
-
+        /* check for incoming characters */
         if(UART_GetRxBufferSize())
         {
             rxData = UART_GetChar();
-            VFD_WriteDisplay(rxData);
             UART_PutChar(rxData);
-            sprintf(printBuffer, " (0x%02x)", rxData);
-            UART_PutString(printBuffer);
-            readData = VFD_ReadDisplay();
-            UART_PutString("\r\nRead data = ");
-            UART_PutCRLF(readData);
+            
+            /* TODO - replace with switch statement to parse incoming characters */
+            if(CR == rxData || LF == rxData) /* handle CR/LF here */
+            {
+                if(CR == rxData)
+                    UART_PutChar(LF);
+                    
+                if(LF == rxData)
+                    UART_PutChar(CR);
+                    
+                VFD_ClearDisplay(); /* clear display to simulate vertical scroll */
+                
+                /* move to next page in circular page buffer */
+                ptrDisplay++;
+                /* check for circular rollover */
+                if(ptrDisplay >= &displayHistory[NUMBER_PAGES])
+                {
+                    ptrDisplay = displayHistory; /* reset structure pointer to beginning */
+                }
+                
+                /* initialize/tidy next buffer */
+                ptrDisplay->inputPosition = 0;
+                ptrDisplay->cursorPosition = 0;
+                ptrDisplay->characterCount = 0;
+                ptrDisplay->inputLineBuffer[0] = '\0';
+                
+                /* switch back to LEFT_ENTRY if primary entry is LEFT_ENTRY */
+                if(PRIMARY_ENTRY_MODE == LEFT_ENTRY)
+                    entryMode = LEFT_ENTRY;
+            }
+            else /* process other characters here */
+            {
+//                sprintf(printBuffer, "\tline input position = %d\t", ptrDisplay->inputPosition);
+//                UART_PutString(printBuffer);
+                ptrDisplay->characterCount++; /* increment character count */
+                ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition] = rxData; /* store character */
+                ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition + 1] = '\0'; /* store character */
+                if(ptrDisplay->characterCount < INPUT_BUFFER_LENGTH)
+                    ptrDisplay->inputPosition++;
+                
+                updateDisplayFlag = TRUE;                
+            }
+            
             if(CTRL_G == rxData)
                 VFD_ClearDisplay();
+                
+//            if(CTRL_Y == rxData)
+//            {
+//                entryMode = LEFT_ENTRY;
+//                sprintf(printBuffer, " %d\t", entryMode);
+//                UART_PutString(printBuffer);
+//            }
+//            
+//            if(CTRL_Z == rxData)
+//            {
+//                entryMode = RIGHT_ENTRY;
+//                sprintf(printBuffer, " %d\t", entryMode);
+//                UART_PutString(printBuffer);
+//            }
+        }
+        
+        if(TRUE == updateDisplayFlag)
+        {
+            switch(entryMode)
+            {
+                case LEFT_ENTRY:
+                    if(ptrDisplay->characterCount < INPUT_BUFFER_LENGTH)
+                        VFD_WriteDisplay(ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition - 1]);
+                    else VFD_WriteDisplay(ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition]);
+//                    sprintf(printBuffer, "cursor position = %d\r\n", ptrDisplay->cursorPosition);
+//                    UART_PutString(printBuffer);
+                    if(ptrDisplay->cursorPosition < DISPLAY_LINE_LENGTH - 1)
+                        ptrDisplay->cursorPosition++;
+                    else entryMode = RIGHT_ENTRY;
+                    
+                    break;
+
+                case RIGHT_ENTRY:
+                    VFD_ClearDisplay();
+                    ptrLineBuffer = ptrDisplay->inputLineBuffer;
+                    if(ptrDisplay->characterCount >= INPUT_BUFFER_LENGTH)
+                        ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
+                    else ptrLineBuffer += (ptrDisplay->inputPosition - DISPLAY_LINE_LENGTH);
+                    VFD_PutString(ptrLineBuffer);
+                    
+                    break;
+            }
+            updateDisplayFlag = FALSE;
         }
         
         if(0 == User_BTN_Read())
@@ -152,92 +203,9 @@ int main(void)
             VFD_Test(User_BTN_Read());
             while(0 == User_BTN_Read())
             ;
+            UART_PutCRLF('x');
             VFD_Test(1);
         }
-    }
-
-    for(;;)
-    {
-        /* Place your application code here. */
-        UserLED_Write(~UserLED_Read());
-        
-        for(uint8_t i = 0; i < 26; i++)
-        {
-            VFD_WriteDisplay('a' + i);
-        }
-        
-        CyDelay(1500);
-
-        for(uint8_t i = 0; i < 2; i++)
-        {
-            VFD_WriteDisplay(TAB);
-        }
-        
-        for(uint8_t i = 0; i < 10; i++)
-        {
-            VFD_WriteDisplay('0' + i);
-        }
-        
-        CyDelay(1500);
-
-        VFD_WriteDisplay(LF);
-        
-        for(uint8_t i = 0; i < 26; i++)
-        {
-            VFD_WriteDisplay('a' + i);
-            CyDelay(50);
-        }
-        
-        CyDelay(500);
-        
-        for(uint8_t i = 0; i < 10; i++)
-        {
-            VFD_WriteDisplay(BS);
-            CyDelay(50);
-        }
-        
-         CyDelay(500);
-
-        for(uint8_t i = 0; i < 10; i++)
-        {
-            VFD_WriteDisplay(TAB);
-            CyDelay(50);
-        }
-        
-        for(uint8_t i = 0; i < 10; i++)
-        {
-            VFD_WriteDisplay('0' + i);
-        }
-        
-        CyDelay(500);
-        
-        for(uint8_t i = 0; i < 10; i++)
-        {
-            VFD_WriteDisplay(TAB);
-            CyDelay(50);
-        }
-        
-        VFD_WriteDisplay('#');
-        
-        VFD_WriteDisplay(CR);
-        VFD_WriteDisplay('!');
-        
-        CyDelay(500);
-
-        for(uint8_t i = 0; i < 10; i++)
-        {
-            VFD_WriteDisplay(BS);
-            CyDelay(100);
-        }
-        
-        CyDelay(500);
-        
-        VFD_WriteDisplay('*');
-        
-        CyDelay(500);
-        
-        VFD_WriteDisplay(LF);
-                
     }
 }
 

@@ -24,6 +24,8 @@
 /***********************************
  * Macros
  ***********************************/
+#define FALSE (0)
+#define TRUE  (1)
 
 /* time between successive writes ... somewhat arbitrary ... trial and error ... 750usec would probably be better */
 #define WRITE_DELAY_MS (1u)
@@ -31,16 +33,30 @@
 #define ENABLE_DISPLAY  (0u)
 #define DISABLE_DISPLAY (1u)
 
+/* physical limits on input buffer and display size */
+//#define INPUT_BUFFER_LENGTH (80u)
+//#define DISPLAY_LINE_LENGTH (40u)
+#define INPUT_BUFFER_LENGTH (80u)
+#define DISPLAY_LINE_LENGTH (40u)
+
+
 /* useful constants */
-#define LINE_LENGTH (40u)
 #define CR          (0x0d)
 #define LF          (0x0a)
 #define CLR         (0x00)
 #define BS          (0x08)
 #define TAB         (0x09)
 #define CTRL_G      (0x07)
+#define CTRL_Y      (0x19)
+#define CTRL_Z      (0x1a)
 #define EOL_WRAP    (0x11)
 #define EOL_STOP    (0x12)
+
+/* display entry modes (LEFT = Normal, RIGHT = crawl/scroll left) */
+enum EntryMode {
+    LEFT_ENTRY,
+    RIGHT_ENTRY    
+};
 
 
 /***********************************

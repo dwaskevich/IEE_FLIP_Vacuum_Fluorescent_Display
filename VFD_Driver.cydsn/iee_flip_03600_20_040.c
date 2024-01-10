@@ -124,7 +124,7 @@ uint8_t VFD_ReadDisplay(void)
 
 uint16_t VFD_PositionCursor(uint8_t position)
 {
-    if(position > LINE_LENGTH)
+    if(position > DISPLAY_LINE_LENGTH)
         return 1;
     VFD_WriteDisplay(CR);
     for(uint8_t i = 0; i < position; i++)
@@ -145,6 +145,9 @@ uint16_t VFD_PutString(char *str)
         return 0;
 
     uint8_t i = 0;
+    
+    // TODO - should there be a test for end-of-display to break the while loop?
+    
     while('\0' != str[i])
     {
         VFD_WriteDisplay(str[i++]);
