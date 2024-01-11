@@ -109,7 +109,7 @@ int main(void)
             }
             else /* process other characters here */
             {
-                currentLineBufferID = VFD_PostCharToHistory(rxData); /* write to display history */
+                currentLineBufferID = VFD_PostToHistory(rxData); /* write to display history */
                 updateDisplayFlag = TRUE; /* signal need for display update */
             }
             

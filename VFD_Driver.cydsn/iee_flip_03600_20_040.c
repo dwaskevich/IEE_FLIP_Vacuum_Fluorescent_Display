@@ -219,7 +219,7 @@ void VFD_InitDisplayHistory(void)
     ptrDisplay = displayHistory; /* reinitialize display history pointer */
 }
 
-uint16_t VFD_PostCharToHistory(char newData)
+uint16_t VFD_PostToHistory(char newData)
 {
     ptrDisplay->characterCount++; /* increment character count */
     ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition] = newData; /* store character */
@@ -278,16 +278,27 @@ uint8_t VFD_UpdateDisplay(void)
         break;
         
     case RIGHT_ENTRY:
-        VFD_ClearDisplay();
-        VFD_PositionCursor((DISPLAY_LINE_LENGTH - 1) - ptrDisplay->cursorPosition);
-        ptrLineBuffer = ptrDisplay->inputLineBuffer;
-        if(ptrDisplay->characterCount >= INPUT_BUFFER_LENGTH)
-            ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
-        else if(ptrDisplay->characterCount > DISPLAY_LINE_LENGTH)
-            ptrLineBuffer += (ptrDisplay->characterCount - DISPLAY_LINE_LENGTH);
-        VFD_PutString(ptrLineBuffer);
+        ptrLineBuffer = ptrDisplay->inputLineBuffer; /* set pointer to beginning of active line buffer */
+        if(ptrDisplay->characterCount >= INPUT_BUFFER_LENGTH) /* input characters are overruning buffer, overwrite last character */
+        {
+            ptrLineBuffer += (INPUT_BUFFER_LENGTH - 1); /* adjust line buffer pointer to most recent character */
+            VFD_PositionCursor((DISPLAY_LINE_LENGTH - 1)); /* position cursor at end of line */
+            VFD_PutChar(*ptrLineBuffer); /* write new character */
+        }
+        else if(ptrDisplay->characterCount > DISPLAY_LINE_LENGTH) /* need to scroll, have to rewrite entire display */
+        {
+            VFD_ClearDisplay(); /* clear the display to start fresh (cursor returned home) */
+            ptrLineBuffer += (ptrDisplay->characterCount - DISPLAY_LINE_LENGTH); /* adjust buffer pointer back one display length */
+            VFD_PutString(ptrLineBuffer); /* write entire string to overwrite display */
+        }
+        else /* partial line/display update */
+        {
+            VFD_PositionCursor((DISPLAY_LINE_LENGTH - 1) - ptrDisplay->cursorPosition); /* posiiton cursor back as far as input stream */
+            VFD_PutString(ptrLineBuffer); /* overwrite display with partial-line string */
+        }
+        
         if(ptrDisplay->cursorPosition < (DISPLAY_LINE_LENGTH - 1))
-            ptrDisplay->cursorPosition++;
+            ptrDisplay->cursorPosition++; /* update current cursor position if not already at EOL */
         
         break;
 }
