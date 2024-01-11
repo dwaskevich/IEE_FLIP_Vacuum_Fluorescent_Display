@@ -37,8 +37,8 @@
 /* physical limit for INPUT_BUFFER_LENGTH depends on available SRAM */
 /* physical limit for DISPLAY_LINE_LENGTH depends display (40 in this case) */
 /* note - a DISPLAY_LINE_LENGTH less than physical limit creates a virtual "end-of-line" */
-#define INPUT_BUFFER_LENGTH (10u)
-#define DISPLAY_LINE_LENGTH (5u)
+#define INPUT_BUFFER_LENGTH (80u)
+#define DISPLAY_LINE_LENGTH (40u)
 
 /* useful constants */
 #define CR          (0x0d)
