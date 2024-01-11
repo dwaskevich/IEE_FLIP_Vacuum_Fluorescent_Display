@@ -63,7 +63,7 @@ int main(void)
     char printBuffer[100];
     char rxData;
     uint8_t entryMode, cursorPosition;
-    uint16_t currentLineBufferID;    
+    uint16_t currentLineBufferID = 0;
     uint8_t updateDisplayFlag = FALSE;
         
     CyGlobalIntEnable; /* Enable global interrupts. */
@@ -82,11 +82,15 @@ int main(void)
     
     while(1)
     {
+        uint8_t bufferSize;
         /* check for incoming characters */
-        if(UART_GetRxBufferSize())
+        if((bufferSize = UART_GetRxBufferSize()))
         {
             rxData = UART_GetChar();
             UART_PutChar(rxData);
+            
+//            sprintf(printBuffer, " %d .. 0x%02X ", bufferSize, rxData);
+//            UART_PutString(printBuffer);
             
             /* TODO - replace with switch statement to parse incoming characters */
             if(CR == rxData || LF == rxData) /* handle CR/LF here */
@@ -106,6 +110,14 @@ int main(void)
                 
                 sprintf(printBuffer, "\r\nLine Buffer ID = %d\r\n", currentLineBufferID);
                 UART_PutString(printBuffer);
+            }
+            else if(0x60 == rxData)
+            {
+                VFD_RecallLine(--currentLineBufferID);
+            }
+            else if(0x7e == rxData)
+            {
+                currentLineBufferID = VFD_ReturnHome();
             }
             else /* process other characters here */
             {
