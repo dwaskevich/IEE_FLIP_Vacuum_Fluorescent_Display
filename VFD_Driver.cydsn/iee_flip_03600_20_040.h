@@ -59,6 +59,7 @@ void VFD_WriteDisplay(uint8_t value);
 uint8_t VFD_ReadDisplay(void);
 uint16_t VFD_PositionCursor(uint8_t position);
 void VFD_PutChar(char value);
+void VFD_PutCharScroll(char value);
 uint16_t VFD_PutString(char *str);
 void VFD_ClearDisplay(void);
 void VFD_ClearToEnd(void);

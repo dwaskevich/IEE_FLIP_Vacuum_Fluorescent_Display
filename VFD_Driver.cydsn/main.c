@@ -134,30 +134,32 @@ int main(void)
     VFD_PositionCursor(16);
     VFD_ClearToEnd();
     
-//    VFD_ClearFromPosition(16);
-    
     VFD_PutString("Clearing screen ...");
     CyDelay(2000);
+    
+    VFD_PositionCursor(LINE_LENGTH - 1);
+    CyDelay(2000);
+    
     VFD_ClearDisplay();
     
     VFD_SetEndOfLineWrap(EOL_STOP);
     VFD_PositionCursor(LINE_LENGTH - 1);
     
-    lineBuffer[lineBufferIndex++] = 'h';
-    lineBuffer[lineBufferIndex++] = 'e';
-    lineBuffer[lineBufferIndex++] = 'l';
-    lineBuffer[lineBufferIndex++] = 'l';
-    lineBuffer[lineBufferIndex++] = 'o';
-    
-    uint8_t j = lineBufferIndex - 1;
-    VFD_PutChar(lineBuffer[j--]);
-    do
-    {
-        VFD_PutChar(BS);
-        VFD_PutChar(lineBuffer[j]);
-        VFD_PutChar(BS);
-    }
-    while(0 != j--);
+//    lineBuffer[lineBufferIndex++] = 'h';
+//    lineBuffer[lineBufferIndex++] = 'e';
+//    lineBuffer[lineBufferIndex++] = 'l';
+//    lineBuffer[lineBufferIndex++] = 'l';
+//    lineBuffer[lineBufferIndex++] = 'o';
+//    
+//    uint8_t j = lineBufferIndex - 1;
+//    VFD_PutChar(lineBuffer[j--]);
+//    do
+//    {
+//        VFD_PutChar(BS);
+//        VFD_PutChar(lineBuffer[j]);
+//        VFD_PutChar(BS);
+//    }
+//    while(0 != j--);
     
     while(1)
     {
@@ -167,7 +169,7 @@ int main(void)
         if(UART_GetRxBufferSize())
         {
             rxData = UART_GetChar();
-            VFD_WriteDisplay(rxData);
+            VFD_PutCharScroll(rxData);
             UART_PutChar(rxData);
             sprintf(printBuffer, "--> 0x%02x", rxData);
             UART_PutString(printBuffer);

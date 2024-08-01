@@ -84,8 +84,10 @@
 #include "base_hardware.h"
 #include "iee_flip_03600_20_040.h"
 
-static uint8_t cursorPosition = 0;
+uint8_t cursorPosition = 0;
 uint8_t eolWrapMode = EOL_WRAP;
+static char lineBuffer[80];
+static uint8_t lineBufferIndex = 0;
 
 /* low-level APIs */
 void toggleStrobe(uint8_t delay_ms)
@@ -144,6 +146,22 @@ void VFD_PutChar(char value)
     cursorPosition++;
 }
 
+void VFD_PutCharScroll(char value)
+{
+    lineBuffer[lineBufferIndex] = value;
+    VFD_PositionCursor(LINE_LENGTH - 1);
+    VFD_WriteDisplay(lineBuffer[lineBufferIndex]);
+    VFD_WriteDisplay(BS);
+    for(uint8_t i = 1; i < lineBufferIndex % 40; i++)
+    {
+        VFD_WriteDisplay(lineBuffer[lineBufferIndex - i]);
+        VFD_WriteDisplay(BS);
+        VFD_WriteDisplay(BS);
+    }
+    lineBufferIndex++;
+    cursorPosition = LINE_LENGTH - lineBufferIndex;
+}
+
 uint16_t VFD_PutString(char *str)
 {
     if('\0' == *str)
@@ -171,16 +189,9 @@ void VFD_ClearDisplay(void)
 
 void VFD_ClearToEnd(void)
 {
-//    VFD_SetEndOfLineWrap(EOL_STOP);
-//    for(uint8_t i = 0; i < LINE_LENGTH; i++)
-//    {
-//        VFD_PutChar(' ');
-//    }
-//    VFD_SetEndOfLineWrap(EOL_WRAP);
-    
     for(uint8_t i = cursorPosition; i < LINE_LENGTH; i++)
     {
-        VFD_PutChar(' ');
+        VFD_WriteDisplay(' ');
     }
     VFD_PositionCursor(cursorPosition);
 }
@@ -192,9 +203,10 @@ void VFD_ClearFromPosition(uint8_t position)
         VFD_PositionCursor(position);
         for(uint8_t i = position; i < LINE_LENGTH; i++)
         {
-            VFD_PutChar(' ');
+            VFD_WriteDisplay(' ');
         }
         VFD_PositionCursor(position);
+        cursorPosition = position;
     }
 }
 
