@@ -71,14 +71,24 @@ int main(void)
     /* Place your initialization/startup code here (e.g. MyInst_Start()) */
     
     /* initialize VFD display (returns entry mode defined in .h file) */
-    entryMode = VFD_InitializeDisplay(PRIMARY_ENTRY_MODE);
+    entryMode = VFD_InitializeDisplay(DEFAULT_ENTRY_MODE);
     
-    /* initialize display history */
-    VFD_InitDisplayHistory();
-
+//    /* initialize display history */
+//    VFD_InitDisplayHistory();
+    
     /* initialize and start UART */
     UART_Start();    
     UART_PutString("\r\nUART started ...\r\n");
+    
+    /* initialize display history */
+    sprintf(printBuffer, "Initializing display history. Size = %d\r\n", VFD_InitDisplayHistory());
+    UART_PutString(printBuffer);
+    
+    UART_PutString("writing long string to VFD\r\n");
+    uint16_t numCharsWritten = 0;
+    numCharsWritten = VFD_PutString("This is a test string to see what happens when it's too long. I guess it really doesn't matter!");
+    sprintf(printBuffer, "VFD_PutString return value = %d\r\n", numCharsWritten);
+    UART_PutString(printBuffer);
     
     while(1)
     {
@@ -111,13 +121,33 @@ int main(void)
                 sprintf(printBuffer, "\r\nLine Buffer ID = %d\r\n", currentLineBufferID);
                 UART_PutString(printBuffer);
             }
-            else if(0x60 == rxData)
+//            else if(0x60 == rxData)
+            else if('&' == rxData)
             {
+                sprintf(printBuffer, "\r\nRecallLine = 0x%02x\r\n", rxData);
+                UART_PutString(printBuffer);
                 VFD_RecallLine(--currentLineBufferID);
             }
-            else if(0x7e == rxData)
+//            else if(0x7e == rxData)
+            else if('*' == rxData)
             {
+                sprintf(printBuffer, "\r\nReturnHome = 0x%02x\r\n", rxData);
+                UART_PutString(printBuffer);
                 currentLineBufferID = VFD_ReturnHome();
+            }
+//            else if(0x7c == rxData)
+            else if('$' == rxData)
+            {
+                sprintf(printBuffer, "\r\nReplayLine = 0x%02x\r\n", rxData);
+                UART_PutString(printBuffer);
+                VFD_ReplayLine(--currentLineBufferID);
+            }
+            else if('@' == rxData)
+            {
+                UART_PutString("writing long string to VFD from forever loop\r\n");
+                numCharsWritten = VFD_PutString("This is a test string to see what happens when it's too long. I guess it really doesn't matter!");
+                sprintf(printBuffer, "VFD_PutString return value = %d\r\n", numCharsWritten);
+                UART_PutString(printBuffer);
             }
             else /* process other characters here */
             {
@@ -126,7 +156,11 @@ int main(void)
             }
             
             if(CTRL_G == rxData)
+            {
+                sprintf(printBuffer, "\r\nClearDisplay = 0x%02x\r\n", rxData);
+                UART_PutString(printBuffer);
                 VFD_ClearDisplay();
+            }
         }
         
         if(TRUE == updateDisplayFlag)

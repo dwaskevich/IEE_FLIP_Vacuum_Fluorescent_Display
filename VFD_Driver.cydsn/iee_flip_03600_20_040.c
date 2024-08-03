@@ -84,14 +84,23 @@
 #include "base_hardware.h"
 #include "iee_flip_03600_20_040.h"
 
-volatile uint8_t entryMode = PRIMARY_ENTRY_MODE;
+/* define data structure for a "frame" of screen data */
+typedef struct{
+	uint16_t pageID; /* page ID/line number */
+    uint16_t characterCount; /* counts input characters (no limit checking, just rolls over) */
+	uint8_t inputPosition; /* pointer to next available location in input buffer */
+    uint8_t cursorPosition; /* pointer to screen cursor position */
+    char inputLineBuffer[INPUT_BUFFER_LENGTH + 1]; /* input line buffer (with room for '\0' NULL at end) */
+} stc_Display;
+
+volatile uint8_t entryMode = DEFAULT_ENTRY_MODE;
 static uint16_t currentLine = 0;
-struct display displayHistory[NUMBER_PAGES];
+stc_Display stc_DisplayHistory[NUMBER_PAGES];
 
 /* declare and assign pointer to display history array */
-struct display *ptrDisplay = displayHistory;
+stc_Display* ptr_stc_Display = stc_DisplayHistory;
 /* declare a pointer to the line buffer */
-char *ptrLineBuffer;
+char* ptrLineBuffer;
 
 /* low-level APIs */
 void toggleStrobe(uint8_t delay_ms)
@@ -133,19 +142,20 @@ uint8_t VFD_ReadDisplay(void)
 
 uint16_t VFD_PositionCursor(uint8_t position)
 {
-    if(position > DISPLAY_LINE_LENGTH)
-        return 1;
-    VFD_WriteDisplay(CR);
-    for(uint8_t i = 0; i < position; i++)
+    uint8_t i = 0;
+    if(position > DISPLAY_LINE_LENGTH) /* check for valid position */
+        position = position % DISPLAY_LINE_LENGTH; /* arbitrarily remove integral line lengths */
+    VFD_WriteDisplay(CR); /* return cursor to home position */
+    for(; i < position; i++)
     {
-        VFD_WriteDisplay(TAB);        
+        VFD_WriteDisplay(TAB); /* TAB character moves cursor forward */
     }
-    return 0;
+    return i; /* return final position */
 }
 
 void VFD_PutChar(char value)
 {
-    VFD_WriteDisplay(value);
+    VFD_WriteDisplay(value); /* writes character to current cursor position */
 }
 
 uint16_t VFD_PutString(char *str)
@@ -153,15 +163,14 @@ uint16_t VFD_PutString(char *str)
     if('\0' == *str)
         return 0;
 
-    uint8_t i = 0;
-    
     // TODO - should there be a test for end-of-display to break the while loop?
-    
+    uint8_t i = 0;
+//    while('\0' != str[i] && i <= INPUT_BUFFER_LENGTH)
     while('\0' != str[i])
     {
-        VFD_WriteDisplay(str[i++]);
+        VFD_WriteDisplay(str[i++]); /* write next character from string */
     }
-    return i;
+    return i; /* return number of characters written */
 }
 
 void VFD_ClearDisplay(void)
@@ -177,18 +186,26 @@ void VFD_ClearDisplay(void)
 /* End of line modes are EOL_WRAP & EOL_STOP */
 void VFD_SetEndOfLineWrap(uint8_t mode)
 {
+    
     VFD_WriteDisplay(mode);
 }
 
 void VFD_Test(uint8_t value)
 {
+    /* grounding TEST pin puts display in "test" mode ... 
+        displays an ASCII up-count while TEST pin is held low. */
+    // TODO - this needs to be improved
     write_TEST(value);
 }
 
 /* high-level display scrolling APIs */
 uint8_t VFD_SetEntryMode(uint8_t mode)
 {
-    entryMode = mode;
+    /* check argument for valid mode */
+    if(mode < MAX_ENTRY_MODE)
+        entryMode = mode;
+    else
+        entryMode = DEFAULT_ENTRY_MODE;
     
     return entryMode;
 }
@@ -204,102 +221,112 @@ uint8_t VFD_InitializeDisplay(uint8_t eolMode)
     return VFD_SetEntryMode(entryMode);
 }
 
-void VFD_InitDisplayHistory(void)
+uint16_t VFD_InitDisplayHistory(void)
 {
     /* initialize display history */
     for(uint8_t i = 0; i < NUMBER_PAGES; i++)
     {
-        ptrDisplay->pageID = i; /* page identifier */
-        ptrDisplay->cursorPosition = 0;
-        ptrDisplay->inputPosition = 0;
-        ptrDisplay->characterCount = 0;
-        ptrDisplay->inputLineBuffer[0] = '\0'; /* null-terminated string */
-        ptrDisplay++; /* move to next item */
+        ptr_stc_Display->pageID = i; /* page identifier (permanent index to this array element) */
+        ptr_stc_Display->cursorPosition = 0; /* current cursor position for this line */
+        ptr_stc_Display->inputPosition = 0; /* index for input buffer to store next incoming character */
+        ptr_stc_Display->characterCount = 0; /* running total of characters received */
+        ptr_stc_Display->inputLineBuffer[0] = '\0'; /* null-terminated string */
+        ptr_stc_Display++; /* move to next array element */
     }    
-    ptrDisplay = displayHistory; /* reinitialize display history pointer */
+    ptr_stc_Display = stc_DisplayHistory; /* initialize pointer to first element of display history array */
+    
+    return sizeof(stc_DisplayHistory) / sizeof(stc_Display); /* confirm/return number of elements initialized */
 }
 
 uint16_t VFD_PostToHistory(char newData)
 {
-    ptrDisplay->characterCount++; /* increment character count */
-    ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition] = newData; /* store character */
-    ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition + 1] = '\0'; /* mark EOL with NULL */
-    if(ptrDisplay->characterCount < INPUT_BUFFER_LENGTH)
-        ptrDisplay->inputPosition++; /* only increment pointer if below buffer limit */
+    ptr_stc_Display->characterCount++; /* increment character count */
+    ptr_stc_Display->inputLineBuffer[ptr_stc_Display->inputPosition] = newData; /* store character */
+    ptr_stc_Display->inputLineBuffer[ptr_stc_Display->inputPosition + 1] = '\0'; /* place EOL marker in next location */
+    if(ptr_stc_Display->characterCount < INPUT_BUFFER_LENGTH) /* check for/prevent buffer overflow */
+        ptr_stc_Display->inputPosition++; /* only increment pointer if below buffer limit */
     
-    return ptrDisplay->pageID;
+    return ptr_stc_Display->pageID; /* return pageID (permanent index of this buffer/structure element) to caller */
 }
 
 uint16_t VFD_CreateNewLine(void)
 {
     /* move to next page in circular page buffer */
-    ptrDisplay++;
+    ptr_stc_Display++;
     /* check for circular rollover */
-    if(ptrDisplay >= &displayHistory[NUMBER_PAGES])
+    if(ptr_stc_Display >= &stc_DisplayHistory[NUMBER_PAGES])
     {
-        ptrDisplay = displayHistory; /* reset structure pointer to beginning */
+        ptr_stc_Display = stc_DisplayHistory; /* reset structure pointer to beginning */
     }
     
     /* initialize/tidy new/next buffer */
-    ptrDisplay->inputPosition = 0;
-    ptrDisplay->cursorPosition = 0;
-    ptrDisplay->characterCount = 0;
-    ptrDisplay->inputLineBuffer[0] = '\0'; /* string EOL null character */
+    ptr_stc_Display->inputPosition = 0;
+    ptr_stc_Display->cursorPosition = 0;
+    ptr_stc_Display->characterCount = 0;
+    ptr_stc_Display->inputLineBuffer[0] = '\0'; /* place string EOL null character */
     
-    /* switch back to LEFT_ENTRY if primary entry is LEFT_ENTRY */
-    if(PRIMARY_ENTRY_MODE == LEFT_ENTRY)
+    /* switch back to LEFT_ENTRY if default entry is LEFT_ENTRY */
+    if(DEFAULT_ENTRY_MODE == LEFT_ENTRY)
         entryMode = LEFT_ENTRY;
     
-    currentLine = ptrDisplay->pageID;
-    return ptrDisplay->pageID;
+    currentLine = ptr_stc_Display->pageID; /* set currentLine to new array index */
+    return ptr_stc_Display->pageID;
 }
 
 uint8_t VFD_UpdateDisplay(void)
 {
     switch(entryMode)
     {
-    case LEFT_ENTRY:
-        if(ptrDisplay->characterCount < INPUT_BUFFER_LENGTH)
-            VFD_WriteDisplay(ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition - 1]);
-        else VFD_WriteDisplay(ptrDisplay->inputLineBuffer[ptrDisplay->inputPosition]);
-        if(ptrDisplay->cursorPosition < DISPLAY_LINE_LENGTH - 1)
-            ptrDisplay->cursorPosition++;
-        else entryMode = LEFT_ENTRY_EOL_SCROLL; /* move to scrolling mode */
+    case LEFT_ENTRY: /* characters enter from left until DISPLAY_LINE_LENGTH, then mode changes to LEFT_ENTRY_EOL_SCROLL */
+        if(ptr_stc_Display->characterCount < INPUT_BUFFER_LENGTH) /* check for room in buffer  */
+            VFD_WriteDisplay(ptr_stc_Display->inputLineBuffer[ptr_stc_Display->inputPosition - 1]);
+        else VFD_WriteDisplay(ptr_stc_Display->inputLineBuffer[ptr_stc_Display->inputPosition]);
+        if(ptr_stc_Display->cursorPosition < DISPLAY_LINE_LENGTH - 1)
+            ptr_stc_Display->cursorPosition++;
+        else
+        {
+            entryMode = LEFT_ENTRY_EOL_SCROLL; /* reached right end, move to scrolling mode */
+            VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
+        }
         
         break;
 
     case LEFT_ENTRY_EOL_SCROLL:
         VFD_ClearDisplay();
-        ptrLineBuffer = ptrDisplay->inputLineBuffer;
-        if(ptrDisplay->characterCount >= INPUT_BUFFER_LENGTH)
+        ptrLineBuffer = ptr_stc_Display->inputLineBuffer;
+        if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH)
             ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
-        else ptrLineBuffer += (ptrDisplay->inputPosition - DISPLAY_LINE_LENGTH);
+        else ptrLineBuffer += (ptr_stc_Display->inputPosition - DISPLAY_LINE_LENGTH);
         VFD_PutString(ptrLineBuffer);
+        VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
         
         break;
         
     case RIGHT_ENTRY:
-        ptrLineBuffer = ptrDisplay->inputLineBuffer; /* set pointer to beginning of active line buffer */
-        if(ptrDisplay->characterCount >= INPUT_BUFFER_LENGTH) /* input characters are overruning buffer, overwrite last character */
+        ptrLineBuffer = ptr_stc_Display->inputLineBuffer; /* set pointer to beginning of active line buffer */
+        if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH) /* input characters are overruning buffer, overwrite last character */
         {
             ptrLineBuffer += (INPUT_BUFFER_LENGTH - 1); /* adjust line buffer pointer to most recent character */
             VFD_PositionCursor((DISPLAY_LINE_LENGTH - 1)); /* position cursor at end of line */
             VFD_PutChar(*ptrLineBuffer); /* write new character */
+            VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
         }
-        else if(ptrDisplay->characterCount > DISPLAY_LINE_LENGTH) /* need to scroll, have to rewrite entire display */
+        else if(ptr_stc_Display->characterCount > DISPLAY_LINE_LENGTH) /* need to scroll, have to rewrite entire display */
         {
             VFD_ClearDisplay(); /* clear the display to start fresh (cursor returned home) */
-            ptrLineBuffer += (ptrDisplay->characterCount - DISPLAY_LINE_LENGTH); /* adjust buffer pointer back one display length */
+            ptrLineBuffer += (ptr_stc_Display->characterCount - DISPLAY_LINE_LENGTH); /* adjust buffer pointer back one display length */
             VFD_PutString(ptrLineBuffer); /* write entire string to overwrite display */
+            VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
         }
         else /* partial line/display update */
         {
-            VFD_PositionCursor((DISPLAY_LINE_LENGTH - 1) - ptrDisplay->cursorPosition); /* posiiton cursor back as far as input stream */
+            VFD_PositionCursor((DISPLAY_LINE_LENGTH - 1) - ptr_stc_Display->cursorPosition); /* posiiton cursor back as far as input stream */
             VFD_PutString(ptrLineBuffer); /* overwrite display with partial-line string */
+            VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
         }
         
-        if(ptrDisplay->cursorPosition < (DISPLAY_LINE_LENGTH - 1))
-            ptrDisplay->cursorPosition++; /* update current cursor position if not already at EOL */
+        if(ptr_stc_Display->cursorPosition < (DISPLAY_LINE_LENGTH - 1))
+            ptr_stc_Display->cursorPosition++; /* update current cursor position if not already at EOL */
         
         break;
         
@@ -307,7 +334,7 @@ uint8_t VFD_UpdateDisplay(void)
         break;
     }
     
-    return ptrDisplay->cursorPosition;
+    return ptr_stc_Display->cursorPosition;
 }
 
 void VFD_RecallLine(uint16_t lineNumber)
@@ -315,21 +342,21 @@ void VFD_RecallLine(uint16_t lineNumber)
     if(lineNumber > NUMBER_PAGES)
         return;
     
-    ptrDisplay = displayHistory;
-    ptrDisplay += lineNumber;
-    ptrLineBuffer = ptrDisplay->inputLineBuffer;
+    ptr_stc_Display = stc_DisplayHistory;
+    ptr_stc_Display += lineNumber;
+    ptrLineBuffer = ptr_stc_Display->inputLineBuffer;
     VFD_ClearDisplay();
     
     switch(entryMode)
     {
     case LEFT_ENTRY:
-        if(ptrDisplay->characterCount >= INPUT_BUFFER_LENGTH)
+        if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH)
         {
             ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
         }
-        else if(ptrDisplay->characterCount > DISPLAY_LINE_LENGTH)
+        else if(ptr_stc_Display->characterCount > DISPLAY_LINE_LENGTH)
         {
-            ptrLineBuffer += (ptrDisplay->characterCount % DISPLAY_LINE_LENGTH);
+            ptrLineBuffer += (ptr_stc_Display->characterCount % DISPLAY_LINE_LENGTH);
         }
 
         VFD_PutString(ptrLineBuffer);
@@ -337,13 +364,13 @@ void VFD_RecallLine(uint16_t lineNumber)
         break;
 
     case LEFT_ENTRY_EOL_SCROLL:
-        if(ptrDisplay->characterCount >= INPUT_BUFFER_LENGTH)
+        if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH)
         {
             ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
         }
-        else if(ptrDisplay->characterCount > DISPLAY_LINE_LENGTH)
+        else if(ptr_stc_Display->characterCount > DISPLAY_LINE_LENGTH)
         {
-            ptrLineBuffer += (ptrDisplay->characterCount % DISPLAY_LINE_LENGTH);
+            ptrLineBuffer += (ptr_stc_Display->characterCount % DISPLAY_LINE_LENGTH);
         }
 
         VFD_PutString(ptrLineBuffer);
@@ -357,27 +384,73 @@ void VFD_RecallLine(uint16_t lineNumber)
 
 void VFD_ReplayLine(uint16_t lineNumber)
 {
+    if(lineNumber > NUMBER_PAGES)
+        return;
     
-    
-}
-
-uint16_t VFD_ReturnHome(void)
-{
-    ptrDisplay = displayHistory;
-    ptrDisplay += currentLine;
-    ptrLineBuffer = ptrDisplay->inputLineBuffer;
+    ptr_stc_Display = stc_DisplayHistory;
+    ptr_stc_Display += lineNumber;
+    ptrLineBuffer = ptr_stc_Display->inputLineBuffer;
     VFD_ClearDisplay();
     
     switch(entryMode)
     {
     case LEFT_ENTRY:
-        if(ptrDisplay->characterCount >= INPUT_BUFFER_LENGTH)
+        for(uint16_t i = 0; i < ptr_stc_Display->characterCount; i++)
+        {
+            if(i < DISPLAY_LINE_LENGTH)
+            {
+                VFD_PutChar(ptrLineBuffer[i]);
+                CyDelay(200); // TODO - create a delay function, #define for delay
+            }
+            else
+            {
+                VFD_PositionCursor(0);
+                for(uint8_t j = DISPLAY_LINE_LENGTH; j >= 0 ; j--)
+                {
+                    VFD_PutChar(ptrLineBuffer[i - j]);
+                    CyDelay(200);
+                }
+            }
+        }
+                
+        break;
+
+    case LEFT_ENTRY_EOL_SCROLL:
+        if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH)
         {
             ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
         }
-        else if(ptrDisplay->characterCount > DISPLAY_LINE_LENGTH)
+        else if(ptr_stc_Display->characterCount > DISPLAY_LINE_LENGTH)
         {
-            ptrLineBuffer += (ptrDisplay->characterCount % DISPLAY_LINE_LENGTH);
+            ptrLineBuffer += (ptr_stc_Display->characterCount % DISPLAY_LINE_LENGTH);
+        }
+
+        VFD_PutString(ptrLineBuffer);
+        
+        break;
+        
+    default:
+        break;
+    }    
+}
+
+uint16_t VFD_ReturnHome(void)
+{
+    ptr_stc_Display = stc_DisplayHistory;
+    ptr_stc_Display += currentLine;
+    ptrLineBuffer = ptr_stc_Display->inputLineBuffer;
+    VFD_ClearDisplay();
+    
+    switch(entryMode)
+    {
+    case LEFT_ENTRY:
+        if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH)
+        {
+            ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
+        }
+        else if(ptr_stc_Display->characterCount > DISPLAY_LINE_LENGTH)
+        {
+            ptrLineBuffer += (ptr_stc_Display->characterCount % DISPLAY_LINE_LENGTH);
         }
 
         VFD_PutString(ptrLineBuffer);
@@ -385,13 +458,13 @@ uint16_t VFD_ReturnHome(void)
         break;
 
     case LEFT_ENTRY_EOL_SCROLL:
-        if(ptrDisplay->characterCount >= INPUT_BUFFER_LENGTH)
+        if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH)
         {
             ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
         }
-        else if(ptrDisplay->characterCount > DISPLAY_LINE_LENGTH)
+        else if(ptr_stc_Display->characterCount > DISPLAY_LINE_LENGTH)
         {
-            ptrLineBuffer += (ptrDisplay->characterCount % DISPLAY_LINE_LENGTH);
+            ptrLineBuffer += (ptr_stc_Display->characterCount % DISPLAY_LINE_LENGTH);
         }
 
         VFD_PutString(ptrLineBuffer);
@@ -399,27 +472,27 @@ uint16_t VFD_ReturnHome(void)
         break;
         
     case RIGHT_ENTRY:
-        ptrLineBuffer = ptrDisplay->inputLineBuffer; /* set pointer to beginning of active line buffer */
-        if(ptrDisplay->characterCount >= INPUT_BUFFER_LENGTH) /* input characters are overruning buffer, overwrite last character */
+        ptrLineBuffer = ptr_stc_Display->inputLineBuffer; /* set pointer to beginning of active line buffer */
+        if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH) /* input characters are overruning buffer, overwrite last character */
         {
             ptrLineBuffer += (INPUT_BUFFER_LENGTH - 1); /* adjust line buffer pointer to most recent character */
             VFD_PositionCursor((DISPLAY_LINE_LENGTH - 1)); /* position cursor at end of line */
             VFD_PutChar(*ptrLineBuffer); /* write new character */
         }
-        else if(ptrDisplay->characterCount > DISPLAY_LINE_LENGTH) /* need to scroll, have to rewrite entire display */
+        else if(ptr_stc_Display->characterCount > DISPLAY_LINE_LENGTH) /* need to scroll, have to rewrite entire display */
         {
             VFD_ClearDisplay(); /* clear the display to start fresh (cursor returned home) */
-            ptrLineBuffer += (ptrDisplay->characterCount - DISPLAY_LINE_LENGTH); /* adjust buffer pointer back one display length */
+            ptrLineBuffer += (ptr_stc_Display->characterCount - DISPLAY_LINE_LENGTH); /* adjust buffer pointer back one display length */
             VFD_PutString(ptrLineBuffer); /* write entire string to overwrite display */
         }
         else /* partial line/display update */
         {
-            VFD_PositionCursor((DISPLAY_LINE_LENGTH - 1) - ptrDisplay->cursorPosition); /* posiiton cursor back as far as input stream */
+            VFD_PositionCursor((DISPLAY_LINE_LENGTH - 1) - ptr_stc_Display->cursorPosition); /* posiiton cursor back as far as input stream */
             VFD_PutString(ptrLineBuffer); /* overwrite display with partial-line string */
         }
         
-        if(ptrDisplay->cursorPosition < (DISPLAY_LINE_LENGTH - 1))
-            ptrDisplay->cursorPosition++; /* update current cursor position if not already at EOL */
+        if(ptr_stc_Display->cursorPosition < (DISPLAY_LINE_LENGTH - 1))
+            ptr_stc_Display->cursorPosition++; /* update current cursor position if not already at EOL */
         
         break;
         

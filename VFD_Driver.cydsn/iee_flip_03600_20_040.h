@@ -37,8 +37,11 @@
 /* physical limit for INPUT_BUFFER_LENGTH depends on available SRAM */
 /* physical limit for DISPLAY_LINE_LENGTH depends display (40 in this case) */
 /* note - a DISPLAY_LINE_LENGTH less than physical limit creates a virtual "end-of-line" */
+/* not sure why I have the buffer length set to 27u ... must be for testing purposes */
+/* yep ... testing purposes. looks like characters start overwriting themselves at 27 */
 #define INPUT_BUFFER_LENGTH (27u)
-#define DISPLAY_LINE_LENGTH (5u)
+/* note - setting DISPLAY_LINE_LENGTH to (5u) for testing purposes */
+#define DISPLAY_LINE_LENGTH (10u)
 
 /* useful constants */
 #define CR          (0x0d)
@@ -53,16 +56,16 @@
 #define EOL_STOP    (0x12)
 
 
-#define PRIMARY_ENTRY_MODE  (LEFT_ENTRY)
+#define DEFAULT_ENTRY_MODE  (RIGHT_ENTRY)
 
-/* define data structure for a "frame" of screen data */
-struct display {
-	uint16_t pageID; /* page ID/line number */
-    uint16_t characterCount; /* counts input characters (no limit checking, just rolls over) */
-	uint8_t inputPosition; /* pointer to next available location in input buffer */
-    uint8_t cursorPosition; /* pointer to screen cursor position */
-    char inputLineBuffer[INPUT_BUFFER_LENGTH + 1]; /* input line buffer (with room for '\0' NULL at end) */
-};
+///* define data structure for a "frame" of screen data */
+//struct stc_Display {
+//	uint16_t pageID; /* page ID/line number */
+//    uint16_t characterCount; /* counts input characters (no limit checking, just rolls over) */
+//	uint8_t inputPosition; /* pointer to next available location in input buffer */
+//    uint8_t cursorPosition; /* pointer to screen cursor position */
+//    char inputLineBuffer[INPUT_BUFFER_LENGTH + 1]; /* input line buffer (with room for '\0' NULL at end) */
+//};
 
 /* define number of storage pages for display history (limited by available SRAM) */
 #define NUMBER_PAGES    (200u)
@@ -70,9 +73,10 @@ struct display {
 
 /* display entry modes (LEFT = Normal, RIGHT = crawl/scroll left) */
 enum EntryMode {
-    LEFT_ENTRY,
-    LEFT_ENTRY_EOL_SCROLL,
-    RIGHT_ENTRY    
+    LEFT_ENTRY,  /* TODO - should this be LEFT_ENTRY_EOL_STOP */
+    LEFT_ENTRY_EOL_SCROLL, /*  */
+    RIGHT_ENTRY,
+    MAX_ENTRY_MODE
 };
 
 
@@ -96,7 +100,7 @@ void VFD_SetEndOfLineWrap(uint8_t mode);
 void VFD_Test(uint8_t value);
 uint8_t VFD_SetEntryMode(uint8_t mode);
 uint8_t VFD_InitializeDisplay(uint8_t eolMode);
-void VFD_InitDisplayHistory(void);
+uint16_t VFD_InitDisplayHistory(void);
 uint16_t VFD_PostToHistory(char newData);
 uint16_t VFD_CreateNewLine(void);
 uint8_t VFD_UpdateDisplay(void);
