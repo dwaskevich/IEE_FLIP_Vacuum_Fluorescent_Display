@@ -57,6 +57,12 @@
 #include "project.h"
 #include "iee_flip_03600_20_040.h"
 #include "stdio.h"
+#include "stdbool.h"
+
+CY_ISR_PROTO(timerISR);
+
+volatile bool timeoutFlag = false;
+volatile bool isEscapeSequenceFlag = false;
 
 int main(void)
 {
@@ -70,6 +76,10 @@ int main(void)
     
     /* Place your initialization/startup code here (e.g. MyInst_Start()) */
     
+//    Timer_Start();
+    Timer_SetInterruptMode(Timer_STATUS_TC_INT_MASK );
+    isr_timeout_StartEx(timerISR);
+    
     /* initialize VFD display (returns entry mode defined in .h file) */
     entryMode = VFD_InitializeDisplay(DEFAULT_ENTRY_MODE);
     
@@ -81,7 +91,10 @@ int main(void)
     UART_PutString("\r\nUART started ...\r\n");
     
     /* initialize display history */
-    sprintf(printBuffer, "Initializing display history. Size = %d\r\n", VFD_InitDisplayHistory());
+    sprintf(printBuffer, "Initializing display history. Number of pages = %d\r\n", VFD_InitDisplayHistory());
+    UART_PutString(printBuffer);
+    
+    sprintf(printBuffer, "SRAM usage for display history = %d\r\n", VFD_SizeOfHistoryArray());
     UART_PutString(printBuffer);
     
     UART_PutString("writing long string to VFD\r\n");
@@ -89,6 +102,65 @@ int main(void)
     numCharsWritten = VFD_PutString("This is a test string to see what happens when it's too long. I guess it really doesn't matter!");
     sprintf(printBuffer, "VFD_PutString return value = %d\r\n", numCharsWritten);
     UART_PutString(printBuffer);
+    
+    UART_PutString("Testing VFD_PositionCursor() ... 204\r\n");
+    sprintf(printBuffer, "Actual cursor position = %d\r\n", VFD_PositionCursor(204));
+    UART_PutString(printBuffer);
+    
+    UserLED_Write(0);
+    for(uint8_t i = 0; i < 5; i++)
+    {
+        UserLED_Write(~UserLED_Read());
+        CyDelay(250);
+    }
+    
+//    bool isEscapeSequenceFlag = false;
+    char escSequence[4] = {0};
+    uint8_t escSequenceNum = 0;
+    
+    while(1)
+    {
+        uint8_t bufferSize;
+        if((bufferSize = UART_GetRxBufferSize()))
+        {
+            Timer_Stop(); /* stop the ESC timeout timer on each new character received */
+            rxData = UART_GetChar();
+            if(ESC == rxData)
+            {
+                escSequence[escSequenceNum++] = rxData; /* save ESC character for later */
+//                escSequenceNum++;
+                isEscapeSequenceFlag = true;
+                Timer_Start(); /* start timeout timer */
+            }
+            else if(true == isEscapeSequenceFlag && escSequenceNum < 3)
+            {
+                escSequence[escSequenceNum++] = rxData;
+            }
+            else if(escSequenceNum >= 2)
+            {
+                for(uint8_t i = 0; i < 2; i++)
+                {
+                    sprintf(printBuffer, "%02x ", escSequence[i]);
+                    UART_PutString(printBuffer);
+                }
+                isEscapeSequenceFlag = false;
+                escSequenceNum = 0;
+            }
+            else
+            {   
+                sprintf(printBuffer, "%02x ", rxData);
+                UART_PutString(printBuffer);
+            }
+        }
+        if(true == timeoutFlag) /* ESC key only, not an escape sequence */
+        {
+//            sprintf(printBuffer, "%02x ", ESC);
+            UART_PutString("ESC ");
+            escSequenceNum = 0;
+//            isEscapeSequenceFlag = false;
+            timeoutFlag = false;
+        }
+    }
     
     while(1)
     {
@@ -178,6 +250,18 @@ int main(void)
             UART_PutCRLF('x');
             VFD_Test(1);
         }
-    }}
+    }
+}
+
+CY_ISR(timerISR)
+{
+    timeoutFlag = TRUE;
+    isEscapeSequenceFlag = false;
+    UserLED_Write(~UserLED_Read());
+    UART_PutString("\r\nfrom isr\r\n");
+    Timer_STATUS;
+    Timer_Stop();
+    isr_timeout_ClearPending();
+} 
 
 /* [] END OF FILE */

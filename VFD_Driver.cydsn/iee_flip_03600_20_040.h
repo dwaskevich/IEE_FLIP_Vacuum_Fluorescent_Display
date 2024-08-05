@@ -54,6 +54,7 @@
 #define CTRL_Z      (0x1a)
 #define EOL_WRAP    (0x11)
 #define EOL_STOP    (0x12)
+#define ESC         (0x1b)
 
 
 #define DEFAULT_ENTRY_MODE  (RIGHT_ENTRY)
@@ -86,6 +87,7 @@ enum EntryMode {
 
 /* low-level APIs */
 void toggleStrobe(uint8_t writeDelay_ms);
+uint16_t VFD_SizeOfHistoryArray();
 
 /* high-level APIs */
 void VFD_EnableDisplay(void);

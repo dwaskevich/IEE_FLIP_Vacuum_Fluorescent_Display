@@ -48,6 +48,7 @@
  *                  overwrites right-most character.
  *              Grounding TEST (pin 1 on interface connector) puts display in "test" mode ...
  *                  displays an ASCII up-count while TEST pin is held low.
+ *              Cursor position starts at 0 (not 1)
  *
  * 6-pin Molex power connector:
  *                  Pin #       Function
@@ -111,6 +112,10 @@ void toggleStrobe(uint8_t delay_ms)
     hw_delay_ms(delay_ms);
 }
 
+uint16_t VFD_SizeOfHistoryArray()
+{
+    return sizeof(stc_DisplayHistory);
+}
 
 /* high-level APIs */
 void VFD_EnableDisplay(void)
@@ -291,7 +296,7 @@ uint8_t VFD_UpdateDisplay(void)
         
         break;
 
-    case LEFT_ENTRY_EOL_SCROLL:
+    case LEFT_ENTRY_EOL_SCROLL: /* cosmetic transition to crawl (i.e. scroll) once EOL is reached */
         VFD_ClearDisplay();
         ptrLineBuffer = ptr_stc_Display->inputLineBuffer;
         if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH)
