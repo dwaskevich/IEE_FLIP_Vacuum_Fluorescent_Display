@@ -56,6 +56,15 @@
 #define EOL_STOP    (0x12)
 #define ESC         (0x1b)
 
+#define UP_ARROW    (0x41)
+#define DOWN_ARROW  (0x42)
+#define RIGHT_ARROW (0x43)
+#define LEFT_ARROW  (0x44)
+#define PAGE_UP     (0x35)
+#define PAGE_DOWN   (0x36)
+#define HOME        (0x31)
+#define END         (0x34)
+
 
 #define DEFAULT_ENTRY_MODE  (RIGHT_ENTRY)
 
