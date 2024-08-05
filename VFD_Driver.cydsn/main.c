@@ -47,8 +47,8 @@
  * Update 4-Aug-2024:
  *		- improvements to 10-Jan-2024 update
  *      - added state machine to detect ESC key and escae sequences
- *          -> One-shot timer generates an interrupt just longer than 115,200
- *             arrival time
+ *          -> One-shot timer generates an interrupt longer than 115,200
+ *             arrival time (empirical value = 20msec)
  *
  *
  * Copyright YOUR COMPANY, THE YEAR
@@ -111,6 +111,7 @@ int main(void)
     sprintf(printBuffer, "SRAM usage for display history = %d\r\n", VFD_SizeOfHistoryArray());
     UART_PutString(printBuffer);
     
+#if(0)
     UART_PutString("writing long string to VFD\r\n");
     uint16_t numCharsWritten = 0;
     numCharsWritten = VFD_PutString("This is a test string to see what happens when it's too long. I guess it really doesn't matter!");
@@ -127,11 +128,14 @@ int main(void)
         UserLED_Write(~UserLED_Read());
         CyDelay(250);
     }
+#endif
     
+    bool isEchoFlag = true;
     bool isEscapeSequenceFlag = false;
     char escSequence[4] = {0};
     uint8_t escSequenceNum = 0;
     
+#if (0)
     while(1)
     {
         uint8_t bufferSize;
@@ -260,6 +264,7 @@ int main(void)
             timeoutFlag = false;
         }
     }
+#endif
     
     while(1)
     {
@@ -267,8 +272,10 @@ int main(void)
         /* check for incoming characters */
         if((bufferSize = UART_GetRxBufferSize()))
         {
+            isEchoFlag = true;
+            Timer_Stop(); /* stop the ESC timeout timer on each new character received */
             rxData = UART_GetChar();
-            UART_PutChar(rxData);
+//            UART_PutChar(rxData);
             
 //            sprintf(printBuffer, " %d .. 0x%02X ", bufferSize, rxData);
 //            UART_PutString(printBuffer);
@@ -292,6 +299,117 @@ int main(void)
                 sprintf(printBuffer, "\r\nLine Buffer ID = %d\r\n", currentLineBufferID);
                 UART_PutString(printBuffer);
             }
+            else if(ESC == rxData) /* ESC key detected ... determine if it's just a key or an escape sequence */
+            {
+                escSequenceNum = 0;
+                escSequence[escSequenceNum++] = rxData; /* save ESC character for later */
+                isEchoFlag = false;
+                isEscapeSequenceFlag = true;
+                Timer_Start(); /* start timeout timer (timeout period set to > 115,200 arrival time) */
+            }
+            else if(true == isEscapeSequenceFlag)
+            {
+                isEchoFlag = false;
+                switch(escSeqState)
+                {
+                    case ESCAPE:
+                        if(0x5b == rxData)
+                        {
+                            escSequence[escSequenceNum++] = rxData;
+                            escSeqState = X5B;
+                        }
+                        else /* expected character (0x5b) in escape sequence not found ... abandon */
+                        {
+                            isEscapeSequenceFlag = false;
+                            escSeqState = ESCAPE;
+                        }
+                    
+                        break;
+                    
+                    case X5B: /* expected character (0x5b) found ... keep parsing escape sequence (3rd character in sequence) */
+                        if(UP_ARROW == rxData)
+                        {
+                            escSequence[escSequenceNum++] = rxData;
+                            UART_PutString("UP_ARROW\r\n");
+                            isEscapeSequenceFlag = false;
+                            escSeqState = ESCAPE;
+                        }
+                        else if(DOWN_ARROW == rxData)
+                        {
+                            escSequence[escSequenceNum++] = rxData;
+                            UART_PutString("DOWN_ARROW\r\n");
+                            isEscapeSequenceFlag = false;
+                            escSeqState = ESCAPE;
+                        }
+                        else if(RIGHT_ARROW == rxData)
+                        {
+                            escSequence[escSequenceNum++] = rxData;
+                            UART_PutString("RIGHT_ARROW\r\n");
+                            isEscapeSequenceFlag = false;
+                            escSeqState = ESCAPE;
+                        }
+                        else if(LEFT_ARROW == rxData)
+                        {
+                            escSequence[escSequenceNum++] = rxData;
+                            UART_PutString("LEFT_ARROW\r\n");
+                            isEscapeSequenceFlag = false;
+                            escSeqState = ESCAPE;
+                        }
+                        else if(PAGE_UP == rxData)
+                        {
+                            escSequence[escSequenceNum++] = rxData;
+                            UART_PutString("PAGE_UP\r\n");
+                            escSeqState = X7E;
+                        }
+                        else if(PAGE_DOWN == rxData)
+                        {
+                            escSequence[escSequenceNum++] = rxData;
+                            UART_PutString("PAGE_DOWN\r\n");
+                            escSeqState = X7E;
+                        }
+                        else if(HOME == rxData)
+                        {
+                            escSequence[escSequenceNum++] = rxData;
+                            UART_PutString("HOME\r\n");
+                            escSeqState = X7E;
+                        }
+                        else if(END == rxData)
+                        {
+                            escSequence[escSequenceNum++] = rxData;
+                            UART_PutString("END\r\n");
+                            escSeqState = X7E;
+                        }
+                        else
+                        {
+                            UART_PutString("Untracked 4-byte sequence\r\n");
+                            escSeqState = X7E;
+                        }
+                    
+                        break;
+                    
+                    case X7E: /* last (4th) character of escape sequence (0x7e) */
+                        if(0x7e == rxData)
+                        {
+                            escSequence[escSequenceNum++] = rxData;
+                            UART_PutString("4-Byte Sequence ... ");
+                            for(uint8_t i = 0; i < 4; i++)
+                            {
+                                sprintf(printBuffer, "%02x ", escSequence[i]);
+                                UART_PutString(printBuffer);
+                            }
+                            UART_PutString("\r\n");
+                            isEscapeSequenceFlag = false;
+                            escSeqState = ESCAPE;
+                        }
+                    
+                        break;
+                    
+                    default:
+                    
+                        break;
+                }
+            }
+#if(0)
 //            else if(0x60 == rxData)
             else if('&' == rxData)
             {
@@ -320,8 +438,10 @@ int main(void)
                 sprintf(printBuffer, "VFD_PutString return value = %d\r\n", numCharsWritten);
                 UART_PutString(printBuffer);
             }
-            else /* process other characters here */
+#endif
+            else if(true == isEchoFlag) /* process other characters here */
             {
+                UART_PutChar(rxData);
                 currentLineBufferID = VFD_PostToHistory(rxData); /* write to display history */
                 updateDisplayFlag = TRUE; /* signal need for display update */
             }
@@ -332,6 +452,13 @@ int main(void)
                 UART_PutString(printBuffer);
                 VFD_ClearDisplay();
             }
+        }
+        
+        if(true == timeoutFlag) /* ESC key only, not an escape sequence */
+        {
+            UART_PutString("ESC\r\n");
+            isEscapeSequenceFlag = false;
+            timeoutFlag = false;
         }
         
         if(TRUE == updateDisplayFlag)
@@ -355,7 +482,6 @@ int main(void)
 CY_ISR(timerISR)
 {
     timeoutFlag = TRUE;
-//    isEscapeSequenceFlag = false;
     UserLED_Write(~UserLED_Read());
     UART_PutString("\r\nfrom isr\r\n");
     Timer_STATUS;
