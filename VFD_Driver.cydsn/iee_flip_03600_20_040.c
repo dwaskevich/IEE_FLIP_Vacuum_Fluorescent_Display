@@ -87,7 +87,7 @@
 
 /* define data structure for a "frame" of screen data */
 typedef struct{
-	uint16_t pageID; /* page ID/line number */
+	uint16_t pageID; /* permanent index */
     uint16_t characterCount; /* counts input characters (no limit checking, just rolls over) */
 	uint8_t inputPosition; /* pointer to next available location in input buffer */
     uint8_t cursorPosition; /* pointer to screen cursor position */
@@ -95,13 +95,19 @@ typedef struct{
 } stc_Display;
 
 volatile uint8_t entryMode = DEFAULT_ENTRY_MODE;
-static uint16_t currentLine = 0;
+uint16_t currentLine = 0;
 stc_Display stc_DisplayHistory[NUMBER_PAGES];
 
 /* declare and assign pointer to display history array */
 stc_Display* ptr_stc_Display = stc_DisplayHistory;
 /* declare a pointer to the line buffer */
 char* ptrLineBuffer;
+
+/* declare and assign pointer to display history array for recall and readback */
+stc_Display* ptr_stc_DisplayRecall = stc_DisplayHistory;
+/* declare a pointer to the line buffer */
+char* ptrLineBufferRecall;
+
 
 /* low-level APIs */
 void toggleStrobe(uint8_t delay_ms)
@@ -307,7 +313,7 @@ uint8_t VFD_UpdateDisplay(void)
         
         break;
         
-    case RIGHT_ENTRY:
+    case RIGHT_ENTRY: /* characters first appear at right-most position, then scroll left */
         ptrLineBuffer = ptr_stc_Display->inputLineBuffer; /* set pointer to beginning of active line buffer */
         if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH) /* input characters are overruning buffer, overwrite last character */
         {
@@ -347,44 +353,40 @@ void VFD_RecallLine(uint16_t lineNumber)
     if(lineNumber > NUMBER_PAGES)
         return;
     
-    ptr_stc_Display = stc_DisplayHistory;
-    ptr_stc_Display += lineNumber;
-    ptrLineBuffer = ptr_stc_Display->inputLineBuffer;
+    ptr_stc_DisplayRecall = stc_DisplayHistory;
+    ptr_stc_DisplayRecall += lineNumber; /* move pointer to requested line */
+    ptrLineBufferRecall = ptr_stc_DisplayRecall->inputLineBuffer;
     VFD_ClearDisplay();
     
-    switch(entryMode)
+#if(0)
+    for(uint16_t i = 0; i < ptr_stc_Display->characterCount; i++)
     {
-    case LEFT_ENTRY:
-        if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH)
-        {
-            ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
-        }
-        else if(ptr_stc_Display->characterCount > DISPLAY_LINE_LENGTH)
-        {
-            ptrLineBuffer += (ptr_stc_Display->characterCount % DISPLAY_LINE_LENGTH);
-        }
-
-        VFD_PutString(ptrLineBuffer);
-                
-        break;
-
-    case LEFT_ENTRY_EOL_SCROLL:
-        if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH)
-        {
-            ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
-        }
-        else if(ptr_stc_Display->characterCount > DISPLAY_LINE_LENGTH)
-        {
-            ptrLineBuffer += (ptr_stc_Display->characterCount % DISPLAY_LINE_LENGTH);
-        }
-
-        VFD_PutString(ptrLineBuffer);
-        
-        break;
-        
-    default:
-        break;
+        VFD_PutChar(*ptrLineBuffer++);        
     }
+#endif
+
+//    VFD_PutString(ptrLineBuffer);
+    
+#if(1)
+    if(ptr_stc_DisplayRecall->characterCount >= INPUT_BUFFER_LENGTH)
+    {
+        ptrLineBufferRecall += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
+        VFD_PutString(ptrLineBufferRecall);
+        VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
+    }
+    else if(ptr_stc_DisplayRecall->characterCount >= DISPLAY_LINE_LENGTH)
+    {
+//        ptrLineBuffer += (ptr_stc_Display->characterCount % DISPLAY_LINE_LENGTH);
+        ptrLineBufferRecall += (ptr_stc_DisplayRecall->characterCount - DISPLAY_LINE_LENGTH);
+        VFD_PutString(ptrLineBufferRecall);
+        VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
+    }
+    else
+    {
+        VFD_PutString(ptrLineBufferRecall);
+        VFD_PositionCursor(ptr_stc_DisplayRecall->cursorPosition);
+    }
+#endif
 }
 
 void VFD_ReplayLine(uint16_t lineNumber)

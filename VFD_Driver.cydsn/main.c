@@ -93,6 +93,7 @@ int main(void)
     char escSequence[4] = {0};
     uint8_t escSequenceNum = 0;
     bool clearDisplayFlag = false;
+    static uint16_t recallLineNumber = 0;
         
     CyGlobalIntEnable; /* Enable global interrupts. */
     
@@ -141,10 +142,11 @@ int main(void)
                 clearDisplayFlag = true; /* reminder to clear display on next received character */
                 UserLED_Write(LED_ON); /* UserLED "ON" to indicate end-of-line (display clear pending) */
                 
-                if(RIGHT_ENTRY == entryMode) /* cosmetic (positions underline at end of display) */
-                    VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
+//                if(RIGHT_ENTRY == entryMode) /* cosmetic (positions underline at end of display) */
+//                    VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
                 
                 currentLineBufferID = VFD_CreateNewLine(); /* get index for next/new line in DisplayHistory array */
+                recallLineNumber = currentLineBufferID;
                 
                 sprintf(printBuffer, "\rLine Buffer ID = %d\r\n", currentLineBufferID);
                 UART_PutString(printBuffer);
@@ -180,17 +182,31 @@ int main(void)
                         if(UP_ARROW == rxData)
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
-                            UART_PutString("UP_ARROW (recall line)\r\n");
-                            VFD_RecallLine(--currentLineBufferID);
+//                            UART_PutString("UP_ARROW (recall line)\r\n");
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
                             escSeqState = ESCAPE; /* return to initial/idle state */
+//                            VFD_RecallLine(--currentLineBufferID);
+                            if(0 == recallLineNumber)
+                                recallLineNumber = NUMBER_PAGES - 1;
+                            else
+                                recallLineNumber -= 1;
+                            sprintf(printBuffer, "UP_ARROW (recall line) %d\r\n", recallLineNumber);
+                            UART_PutString(printBuffer);
+                            VFD_RecallLine(recallLineNumber);
                         }
                         else if(DOWN_ARROW == rxData)
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
-                            UART_PutString("DOWN_ARROW\r\n");
+//                            UART_PutString("DOWN_ARROW\r\n");
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
                             escSeqState = ESCAPE; /* return to initial/idle state */
+                            if((NUMBER_PAGES - 1) == recallLineNumber)
+                                recallLineNumber = 0;
+                            else
+                                recallLineNumber += 1;
+                            sprintf(printBuffer, "DOWN_ARROW (recall line) %d\r\n", recallLineNumber);
+                            UART_PutString(printBuffer);
+                            VFD_RecallLine(recallLineNumber);
                         }
                         else if(RIGHT_ARROW == rxData)
                         {
@@ -203,9 +219,9 @@ int main(void)
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
                             UART_PutString("LEFT_ARROW (replay line)\r\n");
-                            VFD_ReplayLine(--currentLineBufferID);
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
                             escSeqState = ESCAPE; /* return to initial/idle state */
+                            VFD_ReplayLine(--currentLineBufferID);
                         }
                         else if(PAGE_UP == rxData)
                         {
@@ -222,9 +238,13 @@ int main(void)
                         else if(HOME == rxData)
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
-                            UART_PutString("HOME (return home)\r\n");
-                            currentLineBufferID = VFD_ReturnHome();
+//                            UART_PutString("HOME (return home)\r\n");
                             escSeqState = X7E; /* HOME is a 4-byte sequence, move to last state */
+//                            currentLineBufferID = VFD_ReturnHome();
+                            recallLineNumber = currentLineBufferID;
+                            sprintf(printBuffer, "HOME - recall line number = %d\r\n", recallLineNumber);
+                            UART_PutString(printBuffer);
+                            VFD_RecallLine(recallLineNumber);
                         }
                         else if(END == rxData)
                         {
@@ -304,10 +324,13 @@ int main(void)
                 {
                     UserLED_Write(LED_OFF); /* cosmetics ... LED_OFF indicates new line in progress */
                     VFD_ClearDisplay(); /* this is the first character of a new line, clear display */
+                    if(RIGHT_ENTRY == entryMode) /* cosmetic (positions underline at end of display) */
+                        VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
                     clearDisplayFlag = false;
                 }
                 UART_PutChar(rxData); /* echo received character */
                 currentLineBufferID = VFD_PostToHistory(rxData); /* write to display history */
+                recallLineNumber = currentLineBufferID - 1; /* drag recallLineNumber along */
                 updateDisplayFlag = TRUE; /* signal need for display update */
             }
             

@@ -66,7 +66,7 @@
 #define END         (0x34)
 
 
-#define DEFAULT_ENTRY_MODE  (RIGHT_ENTRY)
+#define DEFAULT_ENTRY_MODE  (LEFT_ENTRY)
 
 ///* define data structure for a "frame" of screen data */
 //struct stc_Display {
