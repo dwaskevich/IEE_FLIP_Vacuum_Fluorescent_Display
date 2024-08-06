@@ -50,6 +50,11 @@
  *          -> One-shot timer generates an interrupt longer than 115,200
  *             arrival time (empirical value = 20msec)
  *
+ * Update 6-Aug-2024:
+ *		- moved UART Rx processing to ISR
+ *          -> UART_FIFO_SIZE set with #define
+ *      - implemented routines for UP_ARROW, DOWN_ARROW and HOME
+ *
  *
  * Copyright YOUR COMPANY, THE YEAR
  * All Rights Reserved
@@ -68,9 +73,16 @@
 #define LED_OFF     (0u)
 #define LED_ON      (1u)
 
+#define UART_FIFO_SIZE    (2048u)
+
 CY_ISR_PROTO(timerISR);
+CY_ISR_PROTO(uartISR);
 
 volatile bool timeoutFlag = false;
+volatile uint16_t headPointer = 0, tailPointer = 0;
+char rxFIFO[UART_FIFO_SIZE];
+
+volatile uint16_t fifoLevel;
 
 /* Escape sequence state machine */
 enum escSeqStates
@@ -99,15 +111,15 @@ int main(void)
     
     /* Place your initialization/startup code here (e.g. MyInst_Start()) */
     
-    /* One-shot timer (distinguishes ESC key from escape sequences) */
+    /* initialize one-shot timer (distinguishes ESC key from escape sequences) */
     Timer_SetInterruptMode(Timer_STATUS_TC_INT_MASK );
     isr_timeout_StartEx(timerISR);
     
+    /* start UART interrupt handler */
+    isr_UART_StartEx(uartISR);
+    
     /* initialize VFD display (returns entry mode defined in .h file) */
     entryMode = VFD_InitializeDisplay(DEFAULT_ENTRY_MODE);
-    
-//    /* initialize display history */
-//    VFD_InitDisplayHistory();
     
     /* initialize and start UART */
     UART_Start();    
@@ -122,15 +134,16 @@ int main(void)
     
     while(1)
     {
-        uint8_t bufferSize;
-        /* check for incoming characters */
-        if((bufferSize = UART_GetRxBufferSize()))
+        /* check rxFIFO for incoming characters */
+        if(tailPointer != headPointer) /* if true, new data is available */
         {
-            isEchoFlag = true; /* true if printable character, false if escape sequence is active */
+            rxData = rxFIFO[tailPointer++]; /* retrieve new character from FIFO */
+            if(tailPointer >= UART_FIFO_SIZE) /* manage FIFO pointer rollover */
+                tailPointer = 0;
+            isEchoFlag = true; /* set flag on each new character received (true if printable character, will be reset to false if escape sequence is detected) */
             Timer_Stop(); /* stop the ESC timeout timer on each new character received */
-            rxData = UART_GetChar(); /* get received character from UART ... TODO - put this in an ISR */
             
-            /* TODO - replace with switch statement to parse incoming characters */
+            /* parse incoming characters for carriage return and/or line feed */
             if(CR == rxData || LF == rxData) /* handle CR/LF here */
             {
                 if(CR == rxData)
@@ -146,7 +159,7 @@ int main(void)
 //                    VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
                 
                 currentLineBufferID = VFD_CreateNewLine(); /* get index for next/new line in DisplayHistory array */
-                recallLineNumber = currentLineBufferID;
+                recallLineNumber = currentLineBufferID; /* make note of current line as the new recall line number */
                 
                 sprintf(printBuffer, "\rLine Buffer ID = %d\r\n", currentLineBufferID);
                 UART_PutString(printBuffer);
@@ -182,10 +195,9 @@ int main(void)
                         if(UP_ARROW == rxData)
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
-//                            UART_PutString("UP_ARROW (recall line)\r\n");
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
                             escSeqState = ESCAPE; /* return to initial/idle state */
-//                            VFD_RecallLine(--currentLineBufferID);
+                            /* take appropriate action */
                             if(0 == recallLineNumber)
                                 recallLineNumber = NUMBER_PAGES - 1;
                             else
@@ -197,9 +209,9 @@ int main(void)
                         else if(DOWN_ARROW == rxData)
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
-//                            UART_PutString("DOWN_ARROW\r\n");
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
                             escSeqState = ESCAPE; /* return to initial/idle state */
+                            /* take appropriate action */
                             if((NUMBER_PAGES - 1) == recallLineNumber)
                                 recallLineNumber = 0;
                             else
@@ -238,9 +250,8 @@ int main(void)
                         else if(HOME == rxData)
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
-//                            UART_PutString("HOME (return home)\r\n");
                             escSeqState = X7E; /* HOME is a 4-byte sequence, move to last state */
-//                            currentLineBufferID = VFD_ReturnHome();
+                            /* take appropriate action */
                             recallLineNumber = currentLineBufferID;
                             sprintf(printBuffer, "HOME - recall line number = %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
@@ -252,9 +263,18 @@ int main(void)
                             UART_PutString("END\r\n");
                             escSeqState = X7E; /* END is a 4-byte sequence, move to last state */
                         }
+                        else if(INSERT == rxData)
+                        {
+                            escSequence[escSequenceNum++] = rxData; /* save character for later use */
+//                            UART_PutString("INSERT\r\n");
+                            escSeqState = X7E; /* INSERT is a 4-byte sequence, move to last state */
+                            /* take appropriate action */
+                            sprintf(printBuffer, "INSERT - fifoLevel = %d\r\n", fifoLevel);
+                            UART_PutString(printBuffer);
+                        }
                         else /* unknown/unexpected 3rd character */
                         {
-                            UART_PutString("Untracked 4-byte sequence\r\n");
+                            UART_PutString("Untracked 3-byte sequence\r\n");
                             escSeqState = X7E;
                         }
                     
@@ -288,36 +308,6 @@ int main(void)
                         break;
                 }
             }
-#if(0)
-//            else if(0x60 == rxData)
-            else if('&' == rxData)
-            {
-                sprintf(printBuffer, "\r\nRecallLine = 0x%02x\r\n", rxData);
-                UART_PutString(printBuffer);
-                VFD_RecallLine(--currentLineBufferID);
-            }
-//            else if(0x7e == rxData)
-            else if('*' == rxData)
-            {
-                sprintf(printBuffer, "\r\nReturnHome = 0x%02x\r\n", rxData);
-                UART_PutString(printBuffer);
-                currentLineBufferID = VFD_ReturnHome();
-            }
-//            else if(0x7c == rxData)
-            else if('$' == rxData)
-            {
-                sprintf(printBuffer, "\r\nReplayLine = 0x%02x\r\n", rxData);
-                UART_PutString(printBuffer);
-                VFD_ReplayLine(--currentLineBufferID);
-            }
-            else if('@' == rxData)
-            {
-                UART_PutString("writing long string to VFD from forever loop\r\n");
-                numCharsWritten = VFD_PutString("This is a test string to see what happens when it's too long. I guess it really doesn't matter!");
-                sprintf(printBuffer, "VFD_PutString return value = %d\r\n", numCharsWritten);
-                UART_PutString(printBuffer);
-            }
-#endif
             else if(true == isEchoFlag) /* process printable characters here */
             {
                 if(true == clearDisplayFlag) /* reminder to clear display if this is the first character of a new line */
@@ -373,6 +363,17 @@ CY_ISR(timerISR)
     Timer_STATUS; /* read timer Status to clear "sticky" interrupt bit */
     Timer_Stop(); /* stopping the timer reloads the period counter with configuration value */
     isr_timeout_ClearPending(); /* clear the pending interrupt in the isr component */
+} 
+
+CY_ISR(uartISR)
+{
+    rxFIFO[headPointer++] = UART_GetChar(); /* place received character from UART in FIFO */
+    if(headPointer >= UART_FIFO_SIZE) /* manage headPointer rollover */
+        headPointer = 0;
+    if(headPointer - tailPointer > fifoLevel)
+        fifoLevel = headPointer - tailPointer;
+//    UART_ReadRxStatus(); /* not needed ... UART_RX_STS_FIFO_NOTEMPTY clears immediately after RX data register read. */
+    isr_UART_ClearPending(); /* clear the pending interrupt in the isr component */
 } 
 
 /* [] END OF FILE */

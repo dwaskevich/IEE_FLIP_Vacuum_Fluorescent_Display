@@ -37,11 +37,9 @@
 /* physical limit for INPUT_BUFFER_LENGTH depends on available SRAM */
 /* physical limit for DISPLAY_LINE_LENGTH depends display (40 in this case) */
 /* note - a DISPLAY_LINE_LENGTH less than physical limit creates a virtual "end-of-line" */
-/* not sure why I have the buffer length set to 27u ... must be for testing purposes */
-/* yep ... testing purposes. looks like characters start overwriting themselves at 27 */
-#define INPUT_BUFFER_LENGTH (27u)
-/* note - setting DISPLAY_LINE_LENGTH to (5u) for testing purposes */
-#define DISPLAY_LINE_LENGTH (10u)
+#define INPUT_BUFFER_LENGTH (80u)
+/* note - setting DISPLAY_LINE_LENGTH to (10u) for testing purposes */
+#define DISPLAY_LINE_LENGTH (40u)
 
 /* useful constants */
 #define CR          (0x0d)
@@ -64,6 +62,7 @@
 #define PAGE_DOWN   (0x36)
 #define HOME        (0x31)
 #define END         (0x34)
+#define INSERT      (0x32)
 
 
 #define DEFAULT_ENTRY_MODE  (LEFT_ENTRY)
