@@ -65,16 +65,7 @@
 #define INSERT      (0x32)
 
 
-#define DEFAULT_ENTRY_MODE  (LEFT_ENTRY)
-
-///* define data structure for a "frame" of screen data */
-//struct stc_Display {
-//	uint16_t pageID; /* page ID/line number */
-//    uint16_t characterCount; /* counts input characters (no limit checking, just rolls over) */
-//	uint8_t inputPosition; /* pointer to next available location in input buffer */
-//    uint8_t cursorPosition; /* pointer to screen cursor position */
-//    char inputLineBuffer[INPUT_BUFFER_LENGTH + 1]; /* input line buffer (with room for '\0' NULL at end) */
-//};
+#define DEFAULT_ENTRY_MODE  (RIGHT_ENTRY)
 
 /* define number of storage pages for display history (limited by available SRAM) */
 #define NUMBER_PAGES    (200u)
@@ -82,10 +73,10 @@
 
 /* display entry modes (LEFT = Normal, RIGHT = crawl/scroll left) */
 enum EntryMode {
-    LEFT_ENTRY,  /* TODO - should this be LEFT_ENTRY_EOL_STOP */
-    LEFT_ENTRY_EOL_SCROLL, /*  */
+    LEFT_ENTRY,
+    LEFT_ENTRY_EOL_SCROLL, /* intermediate mode ... reached right end, move to scrolling mode */
     RIGHT_ENTRY,
-    MAX_ENTRY_MODE
+    MAX_ENTRY_MODE /* used for out-of-bounds testing */
 };
 
 

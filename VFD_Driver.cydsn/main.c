@@ -55,6 +55,8 @@
  *          -> UART_FIFO_SIZE set with #define
  *      - implemented routines for UP_ARROW, DOWN_ARROW and HOME
  *
+ * TODO: remove all the escape sequence debugging code
+ *
  *
  * Copyright YOUR COMPANY, THE YEAR
  * All Rights Reserved
@@ -370,8 +372,16 @@ CY_ISR(uartISR)
     rxFIFO[headPointer++] = UART_GetChar(); /* place received character from UART in FIFO */
     if(headPointer >= UART_FIFO_SIZE) /* manage headPointer rollover */
         headPointer = 0;
-    if(headPointer - tailPointer > fifoLevel)
-        fifoLevel = headPointer - tailPointer;
+    if(headPointer >= tailPointer)
+    {
+        if(headPointer - tailPointer > fifoLevel)
+            fifoLevel = headPointer - tailPointer;
+    }
+    else
+    {
+        if(headPointer + UART_FIFO_SIZE - tailPointer > fifoLevel)
+            fifoLevel = headPointer + UART_FIFO_SIZE - tailPointer;
+    }
 //    UART_ReadRxStatus(); /* not needed ... UART_RX_STS_FIFO_NOTEMPTY clears immediately after RX data register read. */
     isr_UART_ClearPending(); /* clear the pending interrupt in the isr component */
 } 
