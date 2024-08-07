@@ -383,7 +383,7 @@ void VFD_RecallLine(uint16_t lineNumber)
     case RIGHT_ENTRY:
         if(ptr_stc_DisplayRecall->characterCount >= INPUT_BUFFER_LENGTH) /* input characters are overruning buffer, overwrite last character */
         {
-            ptrLineBufferRecall += (INPUT_BUFFER_LENGTH - 1); /* adjust line buffer pointer to most recent character */
+            ptrLineBufferRecall += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH); /* adjust line buffer pointer to most recent character */
             VFD_PutString(ptrLineBufferRecall);
             VFD_PositionCursor(DISPLAY_LINE_LENGTH);
         }
@@ -409,48 +409,56 @@ void VFD_RecallLine(uint16_t lineNumber)
 
 void VFD_ReplayLine(uint16_t lineNumber)
 {
+    uint16_t length = 0;
+    
     if(lineNumber > NUMBER_PAGES)
         return;
     
-    ptr_stc_Display = stc_DisplayHistory;
-    ptr_stc_Display += lineNumber;
-    ptrLineBuffer = ptr_stc_Display->inputLineBuffer;
+    ptr_stc_DisplayRecall = stc_DisplayHistory;
+    ptr_stc_DisplayRecall += lineNumber; /* move pointer to requested line */
+    ptrLineBufferRecall = ptr_stc_DisplayRecall->inputLineBuffer;
     VFD_ClearDisplay();
+    
+    if(ptr_stc_DisplayRecall->characterCount >= INPUT_BUFFER_LENGTH)
+        length = INPUT_BUFFER_LENGTH;
+    else
+        length = ptr_stc_DisplayRecall->characterCount;
     
     switch(entryMode)
     {
     case LEFT_ENTRY:
-        for(uint16_t i = 0; i < ptr_stc_Display->characterCount; i++)
+        for(uint16_t i = 0; i < length; i++)
         {
             if(i < DISPLAY_LINE_LENGTH)
             {
-                VFD_PutChar(ptrLineBuffer[i]);
+                VFD_PutChar(ptrLineBufferRecall[i]);
                 CyDelay(200); // TODO - create a delay function, #define for delay
             }
             else
             {
-                VFD_PositionCursor(0);
-                for(uint8_t j = DISPLAY_LINE_LENGTH; j >= 0 ; j--)
+                VFD_ClearDisplay();
+                for(int8_t j = DISPLAY_LINE_LENGTH - 1; j >= 0; j--)
                 {
-                    VFD_PutChar(ptrLineBuffer[i - j]);
-                    CyDelay(200);
+                    VFD_PutChar(ptrLineBufferRecall[i - j]);
                 }
+                CyDelay(200);
             }
         }
                 
         break;
 
-    case LEFT_ENTRY_EOL_SCROLL:
-        if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH)
+    case RIGHT_ENTRY:
+        for(uint16_t i = 0; i < length; i++)
         {
-            ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
-        }
-        else if(ptr_stc_Display->characterCount > DISPLAY_LINE_LENGTH)
-        {
-            ptrLineBuffer += (ptr_stc_Display->characterCount % DISPLAY_LINE_LENGTH);
-        }
+            for(uint8_t j = 0; j <= i; j++)
+            {
+                VFD_PositionCursor((DISPLAY_LINE_LENGTH - 1) - j);
+                VFD_PutChar(ptrLineBufferRecall[i - j]);
+            }
+            CyDelay(200);
 
-        VFD_PutString(ptrLineBuffer);
+            VFD_PositionCursor(DISPLAY_LINE_LENGTH);
+        }
         
         break;
         

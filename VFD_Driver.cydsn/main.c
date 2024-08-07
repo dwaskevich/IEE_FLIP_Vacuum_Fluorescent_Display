@@ -225,9 +225,13 @@ int main(void)
                         else if(RIGHT_ARROW == rxData)
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
-                            UART_PutString("RIGHT_ARROW\r\n");
+//                            UART_PutString("RIGHT_ARROW\r\n");
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
                             escSeqState = ESCAPE; /* return to initial/idle state */
+                            /* take appropriate action */
+                            sprintf(printBuffer, "RIGHT_ARROW (replay line) %d\r\n", recallLineNumber);
+                            UART_PutString(printBuffer);
+                            VFD_ReplayLine(recallLineNumber);
                         }
                         else if(LEFT_ARROW == rxData)
                         {
@@ -235,7 +239,7 @@ int main(void)
                             UART_PutString("LEFT_ARROW (replay line)\r\n");
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
                             escSeqState = ESCAPE; /* return to initial/idle state */
-                            VFD_ReplayLine(--currentLineBufferID);
+                            VFD_ReplayLine(recallLineNumber);
                         }
                         else if(PAGE_UP == rxData)
                         {
