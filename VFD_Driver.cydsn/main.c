@@ -82,6 +82,8 @@
 #define UART_FIFO_SIZE_PERCENT  (25u)
 #define UART_FIFO_SIZE          ((CYDEV_SRAM_SIZE / 100) * UART_FIFO_SIZE_PERCENT)
 
+#define PAGE_JUMP_SIZE          (10u)
+
 CY_ISR_PROTO(timerISR);
 CY_ISR_PROTO(uartISR);
 
@@ -244,17 +246,33 @@ int main(void)
                             UART_PutString(printBuffer);
                             VFD_ReplayLine(recallLineNumber);
                         }
-                        else if(PAGE_UP == rxData)
+                        else if(PAGE_UP == rxData) /* scroll back PAGE_JUMP_SIZE lines */
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
-                            UART_PutString("PAGE_UP\r\n");
+//                            UART_PutString("PAGE_UP\r\n");
                             escSeqState = X7E; /* PAGE_UP is a 4-byte sequence, move to last state */
+                            /* take action here */
+                            if(recallLineNumber < PAGE_JUMP_SIZE)
+                                recallLineNumber = (NUMBER_PAGES - 1) - (PAGE_JUMP_SIZE - recallLineNumber);
+                            else
+                                recallLineNumber -= PAGE_JUMP_SIZE;
+                            sprintf(printBuffer, "PAGE_UP (recall line) %d\r\n", recallLineNumber);
+                            UART_PutString(printBuffer);
+                            VFD_RecallLine(recallLineNumber);
                         }
-                        else if(PAGE_DOWN == rxData)
+                        else if(PAGE_DOWN == rxData) /* scroll forward PAGE_JUMP_SIZE lines */
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
-                            UART_PutString("PAGE_DOWN\r\n");
+//                            UART_PutString("PAGE_DOWN\r\n");
                             escSeqState = X7E; /* PAGE_DOWN is a 4-byte sequence, move to last state */
+                            /* take action here */
+                            if(recallLineNumber >= (NUMBER_PAGES - 1) - PAGE_JUMP_SIZE)
+                                recallLineNumber = PAGE_JUMP_SIZE - ((NUMBER_PAGES - 1) - recallLineNumber);
+                            else
+                                recallLineNumber += PAGE_JUMP_SIZE;
+                            sprintf(printBuffer, "PAGE_DOWN (recall line) %d\r\n", recallLineNumber);
+                            UART_PutString(printBuffer);
+                            VFD_RecallLine(recallLineNumber);
                         }
                         else if(HOME == rxData) /* return to the most recent line */
                         {
