@@ -33,12 +33,11 @@
 #define ENABLE_DISPLAY  (0u)
 #define DISABLE_DISPLAY (1u)
 
-/* define virtual limits for input buffer and display size */
-/* physical limit for INPUT_BUFFER_LENGTH depends on available SRAM */
-/* physical limit for DISPLAY_LINE_LENGTH depends display (40 in this case) */
-/* note - a DISPLAY_LINE_LENGTH less than physical limit creates a virtual "end-of-line" */
+/* define limits for input buffer and display size */
+/* physical limit for INPUT_BUFFER_LENGTH depends on available SRAM (each frame reserves space for buffer length) */
 #define INPUT_BUFFER_LENGTH (80u)
-/* note - setting DISPLAY_LINE_LENGTH to (10u) for testing purposes */
+/* physical limit for DISPLAY_LINE_LENGTH depends on display (40 for display model 03600-20-040) */
+/* note - a DISPLAY_LINE_LENGTH less than physical limit creates a virtual "end-of-line" */
 #define DISPLAY_LINE_LENGTH (40u)
 
 #define READBACK_SCROLL_DELAY_MS    (50u)
@@ -76,7 +75,7 @@
 /* display entry modes (LEFT = Normal, RIGHT = crawl/scroll left) */
 enum EntryMode {
     LEFT_ENTRY,
-    LEFT_ENTRY_EOL_SCROLL, /* intermediate mode ... reached right end, move to scrolling mode */
+    LEFT_ENTRY_EOL_SCROLL, /* intermediate mode when character input reaches right end (switches to scrolling mode */
     RIGHT_ENTRY,
     MAX_ENTRY_MODE /* used for out-of-bounds testing */
 };
