@@ -199,7 +199,7 @@ int main(void)
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
                             escSeqState = ESCAPE; /* return to initial/idle state */
-                            /* take appropriate action */
+                            /* take action here */
                             if(0 == recallLineNumber)
                                 recallLineNumber = NUMBER_PAGES - 1;
                             else
@@ -213,7 +213,7 @@ int main(void)
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
                             escSeqState = ESCAPE; /* return to initial/idle state */
-                            /* take appropriate action */
+                            /* take action here */
                             if((NUMBER_PAGES - 1) == recallLineNumber)
                                 recallLineNumber = 0;
                             else
@@ -228,7 +228,7 @@ int main(void)
 //                            UART_PutString("RIGHT_ARROW\r\n");
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
                             escSeqState = ESCAPE; /* return to initial/idle state */
-                            /* take appropriate action */
+                            /* take action here */
                             sprintf(printBuffer, "RIGHT_ARROW (replay line) %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
                             VFD_ReplayLine(recallLineNumber);
@@ -257,24 +257,33 @@ int main(void)
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
                             escSeqState = X7E; /* HOME is a 4-byte sequence, move to last state */
-                            /* take appropriate action */
-                            recallLineNumber = currentLineBufferID;
-                            sprintf(printBuffer, "HOME - recall line number = %d\r\n", recallLineNumber);
+                            /* take action here */
+//                            recallLineNumber = currentLineBufferID;
+//                            sprintf(printBuffer, "HOME - recall line number = %d\r\n", recallLineNumber);
+//                            UART_PutString(printBuffer);
+//                            VFD_RecallLine(recallLineNumber);
+//                            UART_PutString("HOME - calling VFD_ReturnHome()\r\n");
+                            recallLineNumber = VFD_ReturnHome();
+                            sprintf(printBuffer, "HOME - calling VFD_ReturnHome() ... returned line number %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
-                            VFD_RecallLine(recallLineNumber);
+//                            VFD_ReturnHome();
                         }
                         else if(END == rxData)
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
-                            UART_PutString("END\r\n");
+//                            UART_PutString("END\r\n");
                             escSeqState = X7E; /* END is a 4-byte sequence, move to last state */
+                            /* take action here */
+                            recallLineNumber = VFD_GoToOldest();
+                            sprintf(printBuffer, "END - calling VFD_GoToOldest() ... returned line number %d\r\n", recallLineNumber);
+                            UART_PutString(printBuffer);                            
                         }
                         else if(INSERT == rxData)
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
 //                            UART_PutString("INSERT\r\n");
                             escSeqState = X7E; /* INSERT is a 4-byte sequence, move to last state */
-                            /* take appropriate action */
+                            /* take action here */
                             sprintf(printBuffer, "INSERT - fifoLevel = %d\r\n", fifoLevel);
                             UART_PutString(printBuffer);
                         }
@@ -326,8 +335,8 @@ int main(void)
                 }
                 UART_PutChar(rxData); /* echo received character */
                 currentLineBufferID = VFD_PostToHistory(rxData); /* write to display history */
-                recallLineNumber = currentLineBufferID - 1; /* drag recallLineNumber along */
-                updateDisplayFlag = TRUE; /* signal need for display update */
+                recallLineNumber = currentLineBufferID; /* drag recallLineNumber along */
+                updateDisplayFlag = TRUE; /* indicate need for display update */
             }
             
             if(CTRL_G == rxData)

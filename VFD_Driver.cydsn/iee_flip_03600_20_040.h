@@ -41,6 +41,8 @@
 /* note - setting DISPLAY_LINE_LENGTH to (10u) for testing purposes */
 #define DISPLAY_LINE_LENGTH (40u)
 
+#define READBACK_SCROLL_DELAY_MS    (50u)
+
 /* useful constants */
 #define CR          (0x0d)
 #define LF          (0x0a)
@@ -108,6 +110,7 @@ uint8_t VFD_UpdateDisplay(void);
 void VFD_RecallLine(uint16_t lineNumber);
 void VFD_ReplayLine(uint16_t lineNumber);
 uint16_t VFD_ReturnHome(void);
+uint16_t VFD_GoToOldest(void);
 
 
 /* [] END OF FILE */

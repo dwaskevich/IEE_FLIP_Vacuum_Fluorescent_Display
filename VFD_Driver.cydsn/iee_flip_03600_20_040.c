@@ -432,7 +432,7 @@ void VFD_ReplayLine(uint16_t lineNumber)
             if(i < DISPLAY_LINE_LENGTH)
             {
                 VFD_PutChar(ptrLineBufferRecall[i]);
-                CyDelay(200); // TODO - create a delay function, #define for delay
+                CyDelay(READBACK_SCROLL_DELAY_MS); // TODO - create a delay function, #define for delay
             }
             else
             {
@@ -441,7 +441,7 @@ void VFD_ReplayLine(uint16_t lineNumber)
                 {
                     VFD_PutChar(ptrLineBufferRecall[i - j]);
                 }
-                CyDelay(200);
+                CyDelay(READBACK_SCROLL_DELAY_MS);
             }
         }
                 
@@ -455,7 +455,7 @@ void VFD_ReplayLine(uint16_t lineNumber)
                 VFD_PositionCursor((DISPLAY_LINE_LENGTH - 1) - j);
                 VFD_PutChar(ptrLineBufferRecall[i - j]);
             }
-            CyDelay(200);
+            CyDelay(READBACK_SCROLL_DELAY_MS);
 
             VFD_PositionCursor(DISPLAY_LINE_LENGTH);
         }
@@ -469,6 +469,9 @@ void VFD_ReplayLine(uint16_t lineNumber)
 
 uint16_t VFD_ReturnHome(void)
 {
+    VFD_RecallLine(currentLine);
+    
+#if(0)
     ptr_stc_Display = stc_DisplayHistory;
     ptr_stc_Display += currentLine;
     ptrLineBuffer = ptr_stc_Display->inputLineBuffer;
@@ -532,8 +535,36 @@ uint16_t VFD_ReturnHome(void)
     default:
         break;
     }
+#endif
     
     return currentLine;
+}
+
+uint16_t VFD_GoToOldest(void)
+{
+    uint16_t oldestLineNumber = currentLine; /* start search at current line */
+    ptr_stc_DisplayRecall = stc_DisplayHistory; /* set pointer to beginning of history array */
+    ptr_stc_DisplayRecall += currentLine + 1; /* move pointer to one past current line */
+    
+    /* in a circular buffer, the oldest record will be the next one if the history is full, otherwise search forward for the first non-zero element */
+    while(0 == ptr_stc_DisplayRecall->inputLineBuffer[0]) /* look for non-NULL character in first line position */
+    {
+        /* handle rollover */
+        if(ptr_stc_DisplayRecall == &stc_DisplayHistory[NUMBER_PAGES])
+        {
+            ptr_stc_DisplayRecall = stc_DisplayHistory; /* return pointer back to beginning of array */
+            oldestLineNumber = 0;
+        }
+        else /* otherwise, move pointer forward and increment oldestLineNumber to track/follow */
+        {
+            ptr_stc_DisplayRecall++;
+            oldestLineNumber++;
+        }
+    }
+    
+    VFD_RecallLine(oldestLineNumber);
+    
+    return oldestLineNumber;
 }
 
 /* [] END OF FILE */
