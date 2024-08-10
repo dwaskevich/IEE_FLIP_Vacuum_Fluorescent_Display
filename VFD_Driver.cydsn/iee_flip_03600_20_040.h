@@ -40,9 +40,10 @@
 /* note - a DISPLAY_LINE_LENGTH less than physical limit creates a virtual "end-of-line" */
 #define DISPLAY_LINE_LENGTH (40u)
 
-#define READBACK_SCROLL_DELAY_MS    (50u)
-#define READBACK_TIMER_PERIOD       (1000u * READBACK_SCROLL_DELAY_MS)
-#define READBACK_ESCAPE_PERIOD      (1000u)
+#define READBACK_SCROLL_DELAY_MS        (50u)
+#define READBACK_TIMER_PERIOD           (1000u * READBACK_SCROLL_DELAY_MS)
+#define FAST_READBACK_SCROLL_DELAY_MS   (20u)
+#define FAST_READBACK_TIMER_PERIOD      (1000u * FAST_READBACK_SCROLL_DELAY_MS)
 
 /* useful constants */
 #define CR          (0x0d)
@@ -89,7 +90,7 @@ enum EntryMode {
 
 /* low-level APIs */
 void toggleStrobe(uint8_t writeDelay_ms);
-uint16_t VFD_SizeOfHistoryArray();
+uint16_t VFD_GetSizeOfHistoryArray();
 
 /* high-level APIs */
 void VFD_EnableDisplay(void);

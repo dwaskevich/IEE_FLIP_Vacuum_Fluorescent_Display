@@ -56,8 +56,13 @@
  *      - implemented routines for UP_ARROW, DOWN_ARROW and HOME
  *
  * Update 8-Aug-2024:
- *		- added END functionality (recalls oldest line in history)
- *      - 
+ *		- added END functionality (finds and recalls oldest line in history)
+ *      - added PAGE_UP and PAGE_DOWN features (scrolls forward/backward PAGE_JUMP_SIZE lines)
+ *
+ * Update 10-Aug-2024:
+ *		- added readback timer and isr
+ *      - modified VFD_ReplayLine() to be interrupt-driven (removed CyDelay calls)
+ *      - implemented ESC function (escapes from replay_line ... fast-forwards to EOL)
  *
  * TODO: remove all the escape sequence debugging code
  *
@@ -89,7 +94,6 @@ CY_ISR_PROTO(uartISR);
 CY_ISR_PROTO(readbackISR);
 
 volatile bool timeoutFlag = false, readBackFlag = false;
-bool readback_inProgressFlag = false;
 volatile uint16_t headPointer = 0, tailPointer = 0;
 char rxFIFO[UART_FIFO_SIZE];
 
@@ -123,14 +127,13 @@ int main(void)
     
     /* Place your initialization/startup code here (e.g. MyInst_Start()) */
     
-    /* initialize one-shot timer (distinguishes ESC key from escape sequences) */
+    /* initialize timeout timer (distinguishes ESC key from escape sequences) */
     Timer_Timeout_SetInterruptMode(Timer_Timeout_STATUS_TC_INT_MASK );
     isr_timeout_StartEx(timerISR); /* register interrupt handler */
     
     /* initialize readback timer (paces readback speed) */
     Timer_Readback_SetInterruptMode(Timer_Readback_STATUS_TC_INT_MASK );
     isr_readback_StartEx(readbackISR); /* register interrupt handler */
-//    Timer_Readback_Start();
     
     /* start UART interrupt handler */
     isr_UART_StartEx(uartISR);
@@ -146,7 +149,7 @@ int main(void)
     sprintf(printBuffer, "Initializing display history. Number of pages = %d\r\n", VFD_InitDisplayHistory());
     UART_PutString(printBuffer);
     
-    sprintf(printBuffer, "SRAM usage for display history = %d\r\n", VFD_SizeOfHistoryArray());
+    sprintf(printBuffer, "SRAM usage for display history = %d\r\n", VFD_GetSizeOfHistoryArray());
     UART_PutString(printBuffer);
     
     while(1)
@@ -164,15 +167,15 @@ int main(void)
             if(CR == rxData || LF == rxData) /* handle CR/LF here */
             {
                 if(CR == rxData)
-                    UART_PutChar(LF);
+                    UART_PutChar(LF); /* echo back */
                     
                 if(LF == rxData)
-                    UART_PutChar(CR);
+                    UART_PutChar(CR); /* echo back */
                     
-                clearDisplayFlag = true; /* reminder to clear display on next received character */
+                clearDisplayFlag = true; /* reminder to clear display on next received character (style/aesthetic choice) */
                 UserLED_Write(LED_ON); /* UserLED "ON" to indicate end-of-line (display clear pending) */
                 
-                currentLineBufferID = VFD_CreateNewLine(); /* get index for next/new line in DisplayHistory array */
+                currentLineBufferID = VFD_CreateNewLine(); /* get index for new/next line in DisplayHistory array */
                 recallLineNumber = currentLineBufferID; /* make note of current line as the new recall line number */
                 
                 sprintf(printBuffer, "\rLine Buffer ID = %d\r\n", currentLineBufferID);
@@ -186,39 +189,39 @@ int main(void)
                 isEscapeSequenceFlag = true; /* ESC key detected, escape sequence is (potentially) active */
                 Timer_Timeout_Start(); /* start timeout timer (timeout period set to 20ms), will abort sequence if oneshot timer expires */
             }
-            else if(true == isEscapeSequenceFlag) /* escape key detected ... parse escape sequence with state machine */
+            else if(true == isEscapeSequenceFlag) /* escape key was previously detected ... parse escape sequence with state machine */
             {
                 isEchoFlag = false; /* negate flag to prevent escape sequence characters from being echoed */
                 switch(escSeqState) /* process/parse escape sequence */
                 {
-                    case ESCAPE: /* ESC key was detected, check next character for expected value of 0x5b */
+                    case ESCAPE: /* ESC key was previously detected, check next character for expected value of 0x5b */
                         if(0x5b == rxData)
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
                             escSeqState = X5B; /* move to next state */
                         }
-                        else /* expected character (0x5b) in escape sequence not found ... abandon */
+                        else /* expected character (0x5b) in escape sequence not found ... abort */
                         {
-                            isEscapeSequenceFlag = false; /* abandon escape sequence processing */
+                            isEscapeSequenceFlag = false; /* abort escape sequence processing */
                             escSeqState = ESCAPE; /* return to initial/idle state */
                         }
                     
                         break;
                     
-                    case X5B: /* expected character (0x5b) found ... keep parsing escape sequence (3rd character in sequence) */
+                    case X5B: /* expected character (0x5b) previously found ... keep parsing escape sequence (3rd character in sequence) */
                         if(UP_ARROW == rxData) /* scroll back one line */
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
                             escSeqState = ESCAPE; /* return to initial/idle state */
                             /* take action here */
-                            if(0 == recallLineNumber)
+                            if(0 == recallLineNumber) /* handle circular boundary */
                                 recallLineNumber = NUMBER_PAGES - 1;
                             else
                                 recallLineNumber -= 1;
                             sprintf(printBuffer, "UP_ARROW (recall line) %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
-                            VFD_RecallLine(recallLineNumber);
+                            VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
                         }
                         else if(DOWN_ARROW == rxData) /* scroll forward one line */
                         {
@@ -226,15 +229,15 @@ int main(void)
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
                             escSeqState = ESCAPE; /* return to initial/idle state */
                             /* take action here */
-                            if((NUMBER_PAGES - 1) == recallLineNumber)
+                            if((NUMBER_PAGES - 1) == recallLineNumber) /* handle circular boundary */
                                 recallLineNumber = 0;
                             else
                                 recallLineNumber += 1;
                             sprintf(printBuffer, "DOWN_ARROW (recall line) %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
-                            VFD_RecallLine(recallLineNumber);
+                            VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
                         }
-                        else if(RIGHT_ARROW == rxData) /* replay line (for now ... change later to do something else) */
+                        else if(RIGHT_ARROW == rxData) /* replay line, normal playback speed */
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
@@ -244,11 +247,10 @@ int main(void)
                             UART_PutString(printBuffer);
                             VFD_ClearDisplay();
                             Timer_Readback_WritePeriod(READBACK_TIMER_PERIOD); /* change readback speed */
-//                            Timer_Readback_Start();
-                            replayCharNumber = VFD_ReplayLine(recallLineNumber, 0);
-                            Timer_Readback_Start();
+                            replayCharNumber = VFD_ReplayLine(recallLineNumber, 0); /* request to write character to display */
+                            Timer_Readback_Start(); /* readBackFlag (set in readback timer isr) will request the next character */
                         }
-                        else if(LEFT_ARROW == rxData) /* replay line at READBACK_SCROLL_DELAY_MS character rate */
+                        else if(LEFT_ARROW == rxData) /* replay line, fast playback speed */
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
@@ -257,10 +259,9 @@ int main(void)
                             sprintf(printBuffer, "LEFT_ARROW (replay line) %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
                             VFD_ClearDisplay();
-                            Timer_Readback_WritePeriod(READBACK_TIMER_PERIOD); /* change readback speed */
-//                            Timer_Readback_Start();
-                            replayCharNumber = VFD_ReplayLine(recallLineNumber, 0);
-                            Timer_Readback_Start();
+                            Timer_Readback_WritePeriod(FAST_READBACK_TIMER_PERIOD); /* change readback speed */
+                            replayCharNumber = VFD_ReplayLine(recallLineNumber, 0); /* request to write character to display */
+                            Timer_Readback_Start(); /* readBackFlag (set in readback timer isr) will request the next character */
                         }
                         else if(PAGE_UP == rxData) /* scroll back PAGE_JUMP_SIZE lines */
                         {
@@ -268,13 +269,13 @@ int main(void)
 //                            UART_PutString("PAGE_UP\r\n");
                             escSeqState = X7E; /* PAGE_UP is a 4-byte sequence, move to last state */
                             /* take action here */
-                            if(recallLineNumber < PAGE_JUMP_SIZE)
+                            if(recallLineNumber < PAGE_JUMP_SIZE) /* handle circular boundary */
                                 recallLineNumber = (NUMBER_PAGES - 1) - (PAGE_JUMP_SIZE - recallLineNumber);
                             else
                                 recallLineNumber -= PAGE_JUMP_SIZE;
                             sprintf(printBuffer, "PAGE_UP (recall line) %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
-                            VFD_RecallLine(recallLineNumber);
+                            VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
                         }
                         else if(PAGE_DOWN == rxData) /* scroll forward PAGE_JUMP_SIZE lines */
                         {
@@ -282,20 +283,20 @@ int main(void)
 //                            UART_PutString("PAGE_DOWN\r\n");
                             escSeqState = X7E; /* PAGE_DOWN is a 4-byte sequence, move to last state */
                             /* take action here */
-                            if(recallLineNumber >= (NUMBER_PAGES - 1) - PAGE_JUMP_SIZE)
+                            if(recallLineNumber >= (NUMBER_PAGES - 1) - PAGE_JUMP_SIZE) /* handle circular boundary */
                                 recallLineNumber = PAGE_JUMP_SIZE - ((NUMBER_PAGES - 1) - recallLineNumber);
                             else
                                 recallLineNumber += PAGE_JUMP_SIZE;
                             sprintf(printBuffer, "PAGE_DOWN (recall line) %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
-                            VFD_RecallLine(recallLineNumber);
+                            VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
                         }
                         else if(HOME == rxData) /* return to the most recent line */
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
                             escSeqState = X7E; /* HOME is a 4-byte sequence, move to last state */
                             /* take action here */
-                            recallLineNumber = VFD_ReturnHome();
+                            recallLineNumber = VFD_ReturnHome(); /* VFD_ReturnHome prints latest line and returns line number */
                             sprintf(printBuffer, "HOME - calling VFD_ReturnHome() ... returned line number %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
                         }
@@ -304,7 +305,7 @@ int main(void)
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
                             escSeqState = X7E; /* END is a 4-byte sequence, move to last state */
                             /* take action here */
-                            recallLineNumber = VFD_GoToOldest();
+                            recallLineNumber = VFD_GoToOldest(); /* VFD_GoToOldest searches/finds (then prints) oldest line in history and returns line number */
                             sprintf(printBuffer, "END - calling VFD_GoToOldest() ... returned line number %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);                            
                         }
@@ -340,9 +341,9 @@ int main(void)
                             isEscapeSequenceFlag = false; /* escape sequence complete, return to normal mode */
                             escSeqState = ESCAPE; /* return to initial/idle state */
                         }
-                        else /* unexpected 4th character, abandon escape sequence parsing */
+                        else /* unexpected 4th character, abort escape sequence parsing */
                         {
-                            UART_PutString("Unexpected 4th character, abandoning escape sequence parsing.\r\n");
+                            UART_PutString("Unexpected 4th character, aborting escape sequence parsing.\r\n");
                             escSeqState = ESCAPE; /* return to initial/idle state */
                         }
                     
@@ -379,21 +380,21 @@ int main(void)
         
         if(true == timeoutFlag) /* ESC key only, not an escape sequence */
         {
-            UART_PutString("ESC\r\n"); /* placeholder for something useful later ... like ESC function */
+            UART_PutString("ESC\r\n"); /* ESC key is a way to abandon (escape) a readback by quickly recalling the line */
             isEscapeSequenceFlag = false; /* abort/end escape sequence processing */
             timeoutFlag = false; /* clear the timer timeout interrupt flag */
             /* take action here */
-            Timer_Readback_WritePeriod(READBACK_ESCAPE_PERIOD); /* change to fast readback (1000 = 1ms character delay) */
+            Timer_Readback_Stop(); /* don't need the readback timer interrupt any more ... just recall the line */
+            VFD_RecallLine(recallLineNumber); /* just paint display quickly */
         }
         
-        if(true == readBackFlag) /*  */
+        if(true == readBackFlag) /* readback in progress, request next character */
         {
             readBackFlag = false; /* clear the readback timer interrupt flag */
-            replayCharNumber = VFD_ReplayLine(recallLineNumber, replayCharNumber);
-            if(0 == replayCharNumber)
+            replayCharNumber = VFD_ReplayLine(recallLineNumber, replayCharNumber); /* request a character to be printed to the display */
+            if(0 != replayCharNumber) /* check if line is complete */
             {
-                Timer_Readback_Stop();
-                Timer_Readback_WritePeriod(READBACK_TIMER_PERIOD);
+                Timer_Readback_Start(); /* trigger/start readback oneshot timer ... TC interrupt handler will set readBackFlag */
             }
         }
         
@@ -417,7 +418,7 @@ int main(void)
 
 CY_ISR(timerISR)
 {
-    timeoutFlag = true; /* set timeOut flag */
+    timeoutFlag = true; /* set timeOut flag to indicate escape sequence parsing should be abandoned/aborted */
     Timer_Timeout_STATUS; /* read timer Status to clear "sticky" interrupt bit */
     Timer_Timeout_Stop(); /* stopping the timer reloads the period counter with configuration value */
     isr_timeout_ClearPending(); /* clear the pending interrupt in the isr component */
@@ -447,9 +448,9 @@ CY_ISR(uartISR)
 
 CY_ISR(readbackISR)
 {
-    UserLED_Write(~UserLED_Read());
-    readBackFlag = true;
+    readBackFlag = true; /* set flag to indicate that a new readback character can be requested */
     Timer_Readback_STATUS; /* read timer Status to clear "sticky" interrupt bit */
+    Timer_Readback_Stop(); /* stopping the timer reloads the period counter with configuration value */
     isr_readback_ClearPending(); /* clear the pending interrupt in the isr component */
 } 
 
