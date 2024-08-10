@@ -86,8 +86,10 @@
 
 CY_ISR_PROTO(timerISR);
 CY_ISR_PROTO(uartISR);
+CY_ISR_PROTO(readbackISR);
 
-volatile bool timeoutFlag = false;
+volatile bool timeoutFlag = false, readBackFlag = false;
+bool readback_inProgressFlag = false;
 volatile uint16_t headPointer = 0, tailPointer = 0;
 char rxFIFO[UART_FIFO_SIZE];
 
@@ -115,14 +117,20 @@ int main(void)
     uint8_t escSequenceNum = 0;
     bool clearDisplayFlag = false;
     static uint16_t recallLineNumber = 0;
+    static uint16_t replayCharNumber = 0;
         
     CyGlobalIntEnable; /* Enable global interrupts. */
     
     /* Place your initialization/startup code here (e.g. MyInst_Start()) */
     
     /* initialize one-shot timer (distinguishes ESC key from escape sequences) */
-    Timer_SetInterruptMode(Timer_STATUS_TC_INT_MASK );
-    isr_timeout_StartEx(timerISR);
+    Timer_Timeout_SetInterruptMode(Timer_Timeout_STATUS_TC_INT_MASK );
+    isr_timeout_StartEx(timerISR); /* register interrupt handler */
+    
+    /* initialize readback timer (paces readback speed) */
+    Timer_Readback_SetInterruptMode(Timer_Readback_STATUS_TC_INT_MASK );
+    isr_readback_StartEx(readbackISR); /* register interrupt handler */
+//    Timer_Readback_Start();
     
     /* start UART interrupt handler */
     isr_UART_StartEx(uartISR);
@@ -150,7 +158,7 @@ int main(void)
             if(tailPointer >= UART_FIFO_SIZE) /* manage FIFO pointer rollover */
                 tailPointer = 0;
             isEchoFlag = true; /* set flag on each new character received (true if printable character, will be reset to false if escape sequence is detected) */
-            Timer_Stop(); /* stop the ESC timeout timer on each new character received */
+            Timer_Timeout_Stop(); /* stop the ESC timeout timer on each new character received */
             
             /* parse incoming characters for carriage return and/or line feed */
             if(CR == rxData || LF == rxData) /* handle CR/LF here */
@@ -176,7 +184,7 @@ int main(void)
                 escSequence[escSequenceNum++] = rxData; /* save ESC character for later */
                 isEchoFlag = false; /* negate flag to prevent escape sequence characters from being echoed */
                 isEscapeSequenceFlag = true; /* ESC key detected, escape sequence is (potentially) active */
-                Timer_Start(); /* start timeout timer (timeout period set to 20ms), will abort sequence if oneshot timer expires */
+                Timer_Timeout_Start(); /* start timeout timer (timeout period set to 20ms), will abort sequence if oneshot timer expires */
             }
             else if(true == isEscapeSequenceFlag) /* escape key detected ... parse escape sequence with state machine */
             {
@@ -234,7 +242,11 @@ int main(void)
                             /* take action here */
                             sprintf(printBuffer, "RIGHT_ARROW (replay line) %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
-                            VFD_ReplayLine(recallLineNumber);
+                            VFD_ClearDisplay();
+                            Timer_Readback_WritePeriod(READBACK_TIMER_PERIOD); /* change readback speed */
+//                            Timer_Readback_Start();
+                            replayCharNumber = VFD_ReplayLine(recallLineNumber, 0);
+                            Timer_Readback_Start();
                         }
                         else if(LEFT_ARROW == rxData) /* replay line at READBACK_SCROLL_DELAY_MS character rate */
                         {
@@ -244,7 +256,11 @@ int main(void)
                             /* take action here */
                             sprintf(printBuffer, "LEFT_ARROW (replay line) %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
-                            VFD_ReplayLine(recallLineNumber);
+                            VFD_ClearDisplay();
+                            Timer_Readback_WritePeriod(READBACK_TIMER_PERIOD); /* change readback speed */
+//                            Timer_Readback_Start();
+                            replayCharNumber = VFD_ReplayLine(recallLineNumber, 0);
+                            Timer_Readback_Start();
                         }
                         else if(PAGE_UP == rxData) /* scroll back PAGE_JUMP_SIZE lines */
                         {
@@ -366,6 +382,19 @@ int main(void)
             UART_PutString("ESC\r\n"); /* placeholder for something useful later ... like ESC function */
             isEscapeSequenceFlag = false; /* abort/end escape sequence processing */
             timeoutFlag = false; /* clear the timer timeout interrupt flag */
+            /* take action here */
+            Timer_Readback_WritePeriod(READBACK_ESCAPE_PERIOD); /* change to fast readback (1000 = 1ms character delay) */
+        }
+        
+        if(true == readBackFlag) /*  */
+        {
+            readBackFlag = false; /* clear the readback timer interrupt flag */
+            replayCharNumber = VFD_ReplayLine(recallLineNumber, replayCharNumber);
+            if(0 == replayCharNumber)
+            {
+                Timer_Readback_Stop();
+                Timer_Readback_WritePeriod(READBACK_TIMER_PERIOD);
+            }
         }
         
         if(TRUE == updateDisplayFlag) /* process display updates here */
@@ -389,8 +418,8 @@ int main(void)
 CY_ISR(timerISR)
 {
     timeoutFlag = true; /* set timeOut flag */
-    Timer_STATUS; /* read timer Status to clear "sticky" interrupt bit */
-    Timer_Stop(); /* stopping the timer reloads the period counter with configuration value */
+    Timer_Timeout_STATUS; /* read timer Status to clear "sticky" interrupt bit */
+    Timer_Timeout_Stop(); /* stopping the timer reloads the period counter with configuration value */
     isr_timeout_ClearPending(); /* clear the pending interrupt in the isr component */
 } 
 
@@ -414,6 +443,14 @@ CY_ISR(uartISR)
     }
     
     isr_UART_ClearPending(); /* clear the pending interrupt in the isr component */
+} 
+
+CY_ISR(readbackISR)
+{
+    UserLED_Write(~UserLED_Read());
+    readBackFlag = true;
+    Timer_Readback_STATUS; /* read timer Status to clear "sticky" interrupt bit */
+    isr_readback_ClearPending(); /* clear the pending interrupt in the isr component */
 } 
 
 /* [] END OF FILE */

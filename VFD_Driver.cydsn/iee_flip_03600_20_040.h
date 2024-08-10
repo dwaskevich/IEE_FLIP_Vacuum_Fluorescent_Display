@@ -41,6 +41,8 @@
 #define DISPLAY_LINE_LENGTH (40u)
 
 #define READBACK_SCROLL_DELAY_MS    (50u)
+#define READBACK_TIMER_PERIOD       (1000u * READBACK_SCROLL_DELAY_MS)
+#define READBACK_ESCAPE_PERIOD      (1000u)
 
 /* useful constants */
 #define CR          (0x0d)
@@ -107,7 +109,7 @@ uint16_t VFD_PostToHistory(char newData);
 uint16_t VFD_CreateNewLine(void);
 uint8_t VFD_UpdateDisplay(void);
 void VFD_RecallLine(uint16_t lineNumber);
-void VFD_ReplayLine(uint16_t lineNumber);
+uint16_t VFD_ReplayLine(uint16_t lineNumber, uint16_t charNumber);
 uint16_t VFD_ReturnHome(void);
 uint16_t VFD_GoToOldest(void);
 
