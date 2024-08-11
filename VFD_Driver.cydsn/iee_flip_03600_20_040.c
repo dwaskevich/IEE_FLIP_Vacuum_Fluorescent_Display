@@ -89,7 +89,7 @@
 typedef struct{
 	uint16_t pageID; /* permanent index */
     uint16_t characterCount; /* counts input characters (no limit checking, just rolls over) */
-	uint8_t inputPosition; /* pointer to next available location in input buffer (with buffer limit checking) */
+	uint16_t inputPosition; /* pointer to next available location in input buffer (with buffer limit checking) */
     uint8_t cursorPosition; /* pointer to screen cursor position */
     char inputLineBuffer[INPUT_BUFFER_LENGTH + 1]; /* input line buffer (with room for '\0' NULL at end) */
 } stc_Display;
@@ -174,10 +174,8 @@ uint16_t VFD_PutString(char *str)
     if('\0' == *str)
         return 0;
 
-    // TODO - should there be a test for end-of-display to break the while loop?
-    uint8_t i = 0;
-//    while('\0' != str[i] && i <= INPUT_BUFFER_LENGTH)
-    while('\0' != str[i])
+    uint16_t i = 0;
+    while('\0' != str[i] && i <= INPUT_BUFFER_LENGTH)
     {
         VFD_WriteDisplay(str[i++]); /* write next character from string */
     }
@@ -204,7 +202,6 @@ void VFD_Test(uint8_t value)
 {
     /* grounding TEST pin puts display in "test" mode ... 
         displays an ASCII up-count while TEST pin is held low. */
-    // TODO - this needs to be improved
     write_TEST(value);
 }
 
@@ -318,7 +315,6 @@ uint8_t VFD_UpdateDisplay(void)
         {
             if(0 == (ptr_stc_Display->inputPosition - 1) % DISPLAY_LINE_LENGTH) /* clear display every DISPLAY_LINE_LENGTH */
                 VFD_ClearDisplay();
-//            VFD_WriteDisplay(ptr_stc_Display->inputLineBuffer[ptr_stc_Display->inputPosition - 1]); /* PutChar */
             if(ptr_stc_Display->characterCount < INPUT_BUFFER_LENGTH) /* check to see if buffer is full */
                 VFD_WriteDisplay(ptr_stc_Display->inputLineBuffer[ptr_stc_Display->inputPosition - 1]);
             else VFD_WriteDisplay(ptr_stc_Display->inputLineBuffer[ptr_stc_Display->inputPosition]);
