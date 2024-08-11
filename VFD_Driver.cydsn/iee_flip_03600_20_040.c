@@ -290,11 +290,11 @@ uint8_t VFD_UpdateDisplay(void)
     switch(entryMode)
     {
     case LEFT_ENTRY: /* characters enter from left until DISPLAY_LINE_LENGTH, then mode changes to LEFT_ENTRY_EOL_SCROLL */
-        if(ptr_stc_Display->characterCount < INPUT_BUFFER_LENGTH) /* check for room in buffer  */
+        if(ptr_stc_Display->characterCount < INPUT_BUFFER_LENGTH) /* check to see if buffer is full */
             VFD_WriteDisplay(ptr_stc_Display->inputLineBuffer[ptr_stc_Display->inputPosition - 1]);
         else VFD_WriteDisplay(ptr_stc_Display->inputLineBuffer[ptr_stc_Display->inputPosition]);
         if(ptr_stc_Display->cursorPosition < DISPLAY_LINE_LENGTH - 1)
-            ptr_stc_Display->cursorPosition++; /* write character to current cursor position */
+            ptr_stc_Display->cursorPosition++; /* increment cursor position for next character */
         else
         {
             entryMode = LEFT_ENTRY_EOL_SCROLL; /* reached right end, move to scrolling mode */
@@ -304,13 +304,25 @@ uint8_t VFD_UpdateDisplay(void)
         break;
 
     case LEFT_ENTRY_EOL_SCROLL: /* cosmetic transition to crawl (i.e. scroll) once EOL is reached */
-        VFD_ClearDisplay();
         ptrLineBuffer = ptr_stc_Display->inputLineBuffer;
-        if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH)
-            ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
-        else ptrLineBuffer += (ptr_stc_Display->inputPosition - DISPLAY_LINE_LENGTH);
-        VFD_PutString(ptrLineBuffer);
-        VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
+        if(1 == ENABLE_LEFT_ENTRY_SCROLL) /* execute scrolling effect */
+        {
+            VFD_ClearDisplay();
+            if(ptr_stc_Display->characterCount >= INPUT_BUFFER_LENGTH)
+                ptrLineBuffer += (INPUT_BUFFER_LENGTH - DISPLAY_LINE_LENGTH);
+            else ptrLineBuffer += (ptr_stc_Display->inputPosition - DISPLAY_LINE_LENGTH);
+            VFD_PutString(ptrLineBuffer);
+            VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
+        }
+        else /* dispense with scrolling, just return to left and start filling display again */
+        {
+            if(0 == (ptr_stc_Display->inputPosition - 1) % DISPLAY_LINE_LENGTH) /* clear display every DISPLAY_LINE_LENGTH */
+                VFD_ClearDisplay();
+//            VFD_WriteDisplay(ptr_stc_Display->inputLineBuffer[ptr_stc_Display->inputPosition - 1]); /* PutChar */
+            if(ptr_stc_Display->characterCount < INPUT_BUFFER_LENGTH) /* check to see if buffer is full */
+                VFD_WriteDisplay(ptr_stc_Display->inputLineBuffer[ptr_stc_Display->inputPosition - 1]);
+            else VFD_WriteDisplay(ptr_stc_Display->inputLineBuffer[ptr_stc_Display->inputPosition]);
+        }
         
         break;
         

@@ -70,7 +70,8 @@
 #define INSERT      (0x32)
 
 
-#define DEFAULT_ENTRY_MODE  (LEFT_ENTRY)
+#define DEFAULT_ENTRY_MODE          (LEFT_ENTRY)
+#define ENABLE_LEFT_ENTRY_SCROLL    (0u)
 
 /* define number of storage pages for display history (limited by available SRAM) */
 #define NUMBER_PAGES    (200u)

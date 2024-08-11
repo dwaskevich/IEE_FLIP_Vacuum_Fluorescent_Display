@@ -68,6 +68,18 @@
  *      - moved "clear display" (ctrl-G) to if-else section
  *      - added "restart readback" feature to INSERT key (dual-purpose with FIFO level readout)
  *
+ * Update 11-Aug-2024:
+ *		- added ENABLE_LEFT_ENTRY_SCROLL to customize the way characters are displayed:
+ *          -> When enabled, all received characters scroll after DISPLAY_LINE_LENGTH. While
+ *             this looks appealing when characters arrive at typing speed, it does not
+ *             help readability at line-rate speeds and the downside is that this significantly
+ *             slows down reception (and significantly increases FIFO level).
+ *          -> When disabled, the display is cleared after integral DISPLAY_LINE_LENGTH number
+ *             of characters are received and new arrivals enter at the far left. There is no
+ *             scrolling effect during reception (but scrolling remains in place during recall).
+ *             This significantly increases display updates during line-rate reception (and
+ *             significantly reduces FIFO utilization).
+ *
  * TODO: remove all the escape sequence debugging code
  *
  *
@@ -188,14 +200,14 @@ int main(void)
                 sprintf(printBuffer, "\rLine Buffer ID = %d\r\n", currentLineBufferID);
                 UART_PutString(printBuffer);
             }
-            else if(CTRL_G == rxData)
+            else if(CTRL_G == rxData) /* clear display */
             {
                 sprintf(printBuffer, "\r\nClearDisplay = 0x%02x\r\n", rxData);
                 UART_PutString(printBuffer);
                 replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
                 VFD_ClearDisplay();
             }
-            else if(DEL == rxData)
+            else if(DEL == rxData) /* enter pause/single-step mode */
             {
                 Timer_Readback_Stop();
                 sprintf(printBuffer, "DEL - single stepping line number %d\r\n", recallLineNumber);
