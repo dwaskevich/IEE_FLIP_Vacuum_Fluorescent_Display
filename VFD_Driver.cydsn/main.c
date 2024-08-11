@@ -66,6 +66,7 @@
  *      - implemented single-step function (DEL key) ... replays one character at a time
  *      - fixed bug in VFD_GoToOldest() ... break from the while loop if history is fresh/new
  *      - moved "clear display" (ctrl-G) to if-else section
+ *      - added "restart readback" feature to INSERT key (dual-purpose with FIFO level readout)
  *
  * TODO: remove all the escape sequence debugging code
  *
@@ -340,6 +341,8 @@ int main(void)
                             /* take action here */
                             sprintf(printBuffer, "INSERT - fifo_MaxLevelReached = %d out of %d\r\n", fifo_MaxLevelReached, sizeof(rxFIFO));
                             UART_PutString(printBuffer);
+                            UART_PutString("restarting readback timer ...\r\n");
+                            Timer_Readback_Start();
                         }
                         else /* unknown/unexpected 3rd character */
                         {
