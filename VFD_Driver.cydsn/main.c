@@ -65,6 +65,7 @@
  *      - implemented ESC function (escapes from replay_line ... fast-forwards to EOL)
  *      - implemented single-step function (DEL key) ... replays one character at a time
  *      - fixed bug in VFD_GoToOldest() ... break from the while loop if history is fresh/new
+ *      - moved "clear display" (ctrl-G) to if-else section
  *
  * TODO: remove all the escape sequence debugging code
  *
@@ -185,6 +186,13 @@ int main(void)
                 
                 sprintf(printBuffer, "\rLine Buffer ID = %d\r\n", currentLineBufferID);
                 UART_PutString(printBuffer);
+            }
+            else if(CTRL_G == rxData)
+            {
+                sprintf(printBuffer, "\r\nClearDisplay = 0x%02x\r\n", rxData);
+                UART_PutString(printBuffer);
+                replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
+                VFD_ClearDisplay();
             }
             else if(DEL == rxData)
             {
@@ -384,13 +392,6 @@ int main(void)
                 currentLineBufferID = VFD_PostToHistory(rxData); /* write to display history */
                 recallLineNumber = currentLineBufferID; /* drag recallLineNumber along */
                 updateDisplayFlag = TRUE; /* indicate need for display update */
-            }
-            
-            if(CTRL_G == rxData)
-            {
-                sprintf(printBuffer, "\r\nClearDisplay = 0x%02x\r\n", rxData);
-                UART_PutString(printBuffer);
-                VFD_ClearDisplay();
             }
         }
         
