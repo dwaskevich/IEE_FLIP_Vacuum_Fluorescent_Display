@@ -35,7 +35,7 @@
 
 /* define limits for input buffer and display size */
 /* physical limit for INPUT_BUFFER_LENGTH depends on available SRAM (each frame reserves space for buffer length) */
-#define INPUT_BUFFER_LENGTH (80u)
+#define INPUT_BUFFER_LENGTH (120u)
 /* physical limit for DISPLAY_LINE_LENGTH depends on display (40 for display model 03600-20-040) */
 /* note - a DISPLAY_LINE_LENGTH less than physical limit creates a virtual "end-of-line" */
 #define DISPLAY_LINE_LENGTH (40u)
