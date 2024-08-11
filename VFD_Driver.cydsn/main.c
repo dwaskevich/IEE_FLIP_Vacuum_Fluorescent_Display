@@ -64,6 +64,7 @@
  *      - modified VFD_ReplayLine() to be interrupt-driven (removed CyDelay calls)
  *      - implemented ESC function (escapes from replay_line ... fast-forwards to EOL)
  *      - implemented single-step function (DEL key) ... replays one character at a time
+ *      - fixed bug in VFD_GoToOldest() ... break from the while loop if history is fresh/new
  *
  * TODO: remove all the escape sequence debugging code
  *

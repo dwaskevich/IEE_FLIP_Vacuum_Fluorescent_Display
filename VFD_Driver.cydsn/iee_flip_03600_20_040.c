@@ -514,11 +514,12 @@ uint16_t VFD_ReturnHome(void)
 uint16_t VFD_GoToOldest(void)
 {
     uint16_t oldestLineNumber = currentLine; /* start search at current line */
+    uint16_t recordCount = 0;
     ptr_stc_DisplayRecall = stc_DisplayHistory; /* set pointer to beginning of history array */
     ptr_stc_DisplayRecall += currentLine + 1; /* move pointer to one past current line */
     
     /* in a circular buffer, the oldest record will be the next one if the history is full, otherwise search forward for the first non-zero element */
-    while(0 == ptr_stc_DisplayRecall->inputLineBuffer[0]) /* look for non-NULL character in first line position */
+    while(0 == ptr_stc_DisplayRecall->inputLineBuffer[0] && recordCount++ < NUMBER_PAGES) /* look for non-NULL character in first line position */
     {
         /* handle rollover */
         if(ptr_stc_DisplayRecall == &stc_DisplayHistory[NUMBER_PAGES])
