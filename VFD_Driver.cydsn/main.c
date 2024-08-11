@@ -63,6 +63,7 @@
  *		- added readback timer and isr
  *      - modified VFD_ReplayLine() to be interrupt-driven (removed CyDelay calls)
  *      - implemented ESC function (escapes from replay_line ... fast-forwards to EOL)
+ *      - implemented single-step function (DEL key) ... replays one character at a time
  *
  * TODO: remove all the escape sequence debugging code
  *
@@ -84,6 +85,8 @@
 #define LED_OFF     (0u)
 #define LED_ON      (1u)
 
+#define INITIALIZE_REPLAY   (0xffff)
+
 #define UART_FIFO_SIZE_PERCENT  (25u)
 #define UART_FIFO_SIZE          ((CYDEV_SRAM_SIZE / 100) * UART_FIFO_SIZE_PERCENT)
 
@@ -93,7 +96,7 @@ CY_ISR_PROTO(timerISR);
 CY_ISR_PROTO(uartISR);
 CY_ISR_PROTO(readbackISR);
 
-volatile bool timeoutFlag = false, readBackFlag = false;
+volatile bool timeoutFlag = false, readBackFlag = false, singleStepFlag = false;
 volatile uint16_t headPointer = 0, tailPointer = 0;
 char rxFIFO[UART_FIFO_SIZE];
 
@@ -172,6 +175,7 @@ int main(void)
                 if(LF == rxData)
                     UART_PutChar(CR); /* echo back */
                     
+                replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
                 clearDisplayFlag = true; /* reminder to clear display on next received character (style/aesthetic choice) */
                 UserLED_Write(LED_ON); /* UserLED "ON" to indicate end-of-line (display clear pending) */
                 
@@ -180,6 +184,13 @@ int main(void)
                 
                 sprintf(printBuffer, "\rLine Buffer ID = %d\r\n", currentLineBufferID);
                 UART_PutString(printBuffer);
+            }
+            else if(DEL == rxData)
+            {
+                Timer_Readback_Stop();
+                sprintf(printBuffer, "DEL - single stepping line number %d\r\n", recallLineNumber);
+                UART_PutString(printBuffer);
+                singleStepFlag = true;
             }
             else if(ESC == rxData) /* ESC key detected ... determine if it's just the ESC key or beginning of an escape sequence */
             {
@@ -221,6 +232,7 @@ int main(void)
                                 recallLineNumber -= 1;
                             sprintf(printBuffer, "UP_ARROW (recall line) %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
+                            replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
                             VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
                         }
                         else if(DOWN_ARROW == rxData) /* scroll forward one line */
@@ -235,6 +247,7 @@ int main(void)
                                 recallLineNumber += 1;
                             sprintf(printBuffer, "DOWN_ARROW (recall line) %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
+                            replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
                             VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
                         }
                         else if(RIGHT_ARROW == rxData) /* replay line, normal playback speed */
@@ -266,7 +279,6 @@ int main(void)
                         else if(PAGE_UP == rxData) /* scroll back PAGE_JUMP_SIZE lines */
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
-//                            UART_PutString("PAGE_UP\r\n");
                             escSeqState = X7E; /* PAGE_UP is a 4-byte sequence, move to last state */
                             /* take action here */
                             if(recallLineNumber < PAGE_JUMP_SIZE) /* handle circular boundary */
@@ -275,12 +287,12 @@ int main(void)
                                 recallLineNumber -= PAGE_JUMP_SIZE;
                             sprintf(printBuffer, "PAGE_UP (recall line) %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
+                            replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
                             VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
                         }
                         else if(PAGE_DOWN == rxData) /* scroll forward PAGE_JUMP_SIZE lines */
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
-//                            UART_PutString("PAGE_DOWN\r\n");
                             escSeqState = X7E; /* PAGE_DOWN is a 4-byte sequence, move to last state */
                             /* take action here */
                             if(recallLineNumber >= (NUMBER_PAGES - 1) - PAGE_JUMP_SIZE) /* handle circular boundary */
@@ -289,6 +301,7 @@ int main(void)
                                 recallLineNumber += PAGE_JUMP_SIZE;
                             sprintf(printBuffer, "PAGE_DOWN (recall line) %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
+                            replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
                             VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
                         }
                         else if(HOME == rxData) /* return to the most recent line */
@@ -296,6 +309,7 @@ int main(void)
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
                             escSeqState = X7E; /* HOME is a 4-byte sequence, move to last state */
                             /* take action here */
+                            replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
                             recallLineNumber = VFD_ReturnHome(); /* VFD_ReturnHome prints latest line and returns line number */
                             sprintf(printBuffer, "HOME - calling VFD_ReturnHome() ... returned line number %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);
@@ -305,6 +319,7 @@ int main(void)
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
                             escSeqState = X7E; /* END is a 4-byte sequence, move to last state */
                             /* take action here */
+                            replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
                             recallLineNumber = VFD_GoToOldest(); /* VFD_GoToOldest searches/finds (then prints) oldest line in history and returns line number */
                             sprintf(printBuffer, "END - calling VFD_GoToOldest() ... returned line number %d\r\n", recallLineNumber);
                             UART_PutString(printBuffer);                            
@@ -312,7 +327,6 @@ int main(void)
                         else if(INSERT == rxData) /* placeholder for now ... print the deepest FIFO level so far */
                         {
                             escSequence[escSequenceNum++] = rxData; /* save character for later use */
-//                            UART_PutString("INSERT\r\n");
                             escSeqState = X7E; /* INSERT is a 4-byte sequence, move to last state */
                             /* take action here */
                             sprintf(printBuffer, "INSERT - fifo_MaxLevelReached = %d out of %d\r\n", fifo_MaxLevelReached, sizeof(rxFIFO));
@@ -359,6 +373,7 @@ int main(void)
                 if(true == clearDisplayFlag) /* reminder to clear display if this is the first character of a new line */
                 {
                     UserLED_Write(LED_OFF); /* cosmetics ... LED_OFF indicates new line in progress */
+                    replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
                     VFD_ClearDisplay(); /* this is the first character of a new line, clear display */
                     if(RIGHT_ENTRY == entryMode) /* cosmetic (positions underline at end of display) */
                         VFD_PositionCursor(DISPLAY_LINE_LENGTH - 1);
@@ -385,6 +400,7 @@ int main(void)
             timeoutFlag = false; /* clear the timer timeout interrupt flag */
             /* take action here */
             Timer_Readback_Stop(); /* don't need the readback timer interrupt any more ... just recall the line */
+            replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
             VFD_RecallLine(recallLineNumber); /* just paint display quickly */
         }
         
@@ -395,6 +411,22 @@ int main(void)
             if(0 != replayCharNumber) /* check if line is complete */
             {
                 Timer_Readback_Start(); /* trigger/start readback oneshot timer ... TC interrupt handler will set readBackFlag */
+            }
+            else
+                replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
+        }
+        
+        if(true == singleStepFlag) /* singleStep active ... request one character */
+        {
+            singleStepFlag = false; /* clear the single step flag */
+            if(INITIALIZE_REPLAY == replayCharNumber) /* 0xffff indicates that single-step should start at 0 */
+            {
+                VFD_ClearDisplay();
+                replayCharNumber = VFD_ReplayLine(recallLineNumber, 0); /* request a character to be printed to the display */
+            }
+            else if(0 != replayCharNumber) /* check if line is complete */
+            {
+                replayCharNumber = VFD_ReplayLine(recallLineNumber, replayCharNumber); /* request another character to be printed to the display */
             }
         }
         

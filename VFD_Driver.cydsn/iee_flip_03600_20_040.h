@@ -57,6 +57,7 @@
 #define EOL_WRAP    (0x11)
 #define EOL_STOP    (0x12)
 #define ESC         (0x1b)
+#define DEL         (0x7f)
 
 #define UP_ARROW    (0x41)
 #define DOWN_ARROW  (0x42)
