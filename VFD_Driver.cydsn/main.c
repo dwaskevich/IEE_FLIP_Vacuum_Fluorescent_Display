@@ -39,14 +39,14 @@
  *      - created new functions
  *      - updated main.c
  *      - entry mode (LEFT/RIGHT) defined in .h file
- *          '-> returned to application with VFD_InitializeDisplay() API
+ *          '-> entry mode returned to application with VFD_InitializeDisplay() API
  *      - set up desired INPUT_BUFFER_LENGTH and DISPLAY_LINE_LENGTH in .h file
  *      - length of history buffer depends on available SRAM
  *          '-> set NUMBER_PAGES in .h file 
  *
  * Update 4-Aug-2024:
  *		- improvements to 10-Jan-2024 update
- *      - added state machine to detect ESC key and escae sequences
+ *      - added state machine to detect ESC key and escape sequences
  *          -> One-shot timer generates an interrupt longer than 115,200
  *             arrival time (empirical value = 20msec)
  *
@@ -80,6 +80,9 @@
  *             This significantly increases display updates during line-rate reception (and
  *             significantly reduces FIFO utilization).
  *
+ * Update 13-Aug-2024:
+ *		- modified VFD_RecallLine to return pointer to string
+ *
  * TODO: remove all the escape sequence debugging code
  *
  *
@@ -102,7 +105,7 @@
 
 #define INITIALIZE_REPLAY   (0xffff)
 
-#define UART_FIFO_SIZE_PERCENT  (25u)
+#define UART_FIFO_SIZE_PERCENT  (37u)
 #define UART_FIFO_SIZE          ((CYDEV_SRAM_SIZE / 100) * UART_FIFO_SIZE_PERCENT)
 
 #define PAGE_JUMP_SIZE          (10u)
@@ -140,6 +143,7 @@ int main(void)
     bool clearDisplayFlag = false;
     static uint16_t recallLineNumber = 0;
     static uint16_t replayCharNumber = 0;
+    char* str;
         
     CyGlobalIntEnable; /* Enable global interrupts. */
     
@@ -252,10 +256,12 @@ int main(void)
                                 recallLineNumber = NUMBER_PAGES - 1;
                             else
                                 recallLineNumber -= 1;
-                            sprintf(printBuffer, "UP_ARROW (recall line) %d\r\n", recallLineNumber);
+                            sprintf(printBuffer, "UP_ARROW   recall line\t... %3d\t", recallLineNumber);
                             UART_PutString(printBuffer);
                             replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
-                            VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
+                            str = VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
+                            UART_PutString(str);
+                            UART_PutString("\r\n");
                         }
                         else if(DOWN_ARROW == rxData) /* scroll forward one line */
                         {
@@ -267,10 +273,12 @@ int main(void)
                                 recallLineNumber = 0;
                             else
                                 recallLineNumber += 1;
-                            sprintf(printBuffer, "DOWN_ARROW (recall line) %d\r\n", recallLineNumber);
+                            sprintf(printBuffer, "DOWN_ARROW recall line\t... %3d\t", recallLineNumber);
                             UART_PutString(printBuffer);
                             replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
-                            VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
+                            str = VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
+                            UART_PutString(str);
+                            UART_PutString("\r\n");
                         }
                         else if(RIGHT_ARROW == rxData) /* replay line, normal playback speed */
                         {
@@ -307,10 +315,12 @@ int main(void)
                                 recallLineNumber = (NUMBER_PAGES - 1) - (PAGE_JUMP_SIZE - recallLineNumber);
                             else
                                 recallLineNumber -= PAGE_JUMP_SIZE;
-                            sprintf(printBuffer, "PAGE_UP (recall line) %d\r\n", recallLineNumber);
+                            sprintf(printBuffer, "PAGE_UP    recall line\t... %3d\t", recallLineNumber);
                             UART_PutString(printBuffer);
                             replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
-                            VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
+                            str = VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
+                            UART_PutString(str);
+                            UART_PutString("\r\n");
                         }
                         else if(PAGE_DOWN == rxData) /* scroll forward PAGE_JUMP_SIZE lines */
                         {
@@ -321,10 +331,12 @@ int main(void)
                                 recallLineNumber = PAGE_JUMP_SIZE - ((NUMBER_PAGES - 1) - recallLineNumber);
                             else
                                 recallLineNumber += PAGE_JUMP_SIZE;
-                            sprintf(printBuffer, "PAGE_DOWN (recall line) %d\r\n", recallLineNumber);
+                            sprintf(printBuffer, "PAGE_DOWN  recall line\t... %3d\t", recallLineNumber);
                             UART_PutString(printBuffer);
                             replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
-                            VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
+                            str = VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
+                            UART_PutString(str);
+                            UART_PutString("\r\n");
                         }
                         else if(HOME == rxData) /* return to the most recent line */
                         {

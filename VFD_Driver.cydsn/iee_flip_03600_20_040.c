@@ -357,10 +357,10 @@ uint8_t VFD_UpdateDisplay(void)
     return ptr_stc_Display->cursorPosition;
 }
 
-void VFD_RecallLine(uint16_t lineNumber)
+char* VFD_RecallLine(uint16_t lineNumber)
 {
     if(lineNumber > NUMBER_PAGES)
-        return;
+        return NULL;
     
     ptr_stc_DisplayRecall = stc_DisplayHistory; /* initialize pointer to first element of display history array */
     ptr_stc_DisplayRecall += lineNumber; /* move pointer to requested line */
@@ -433,6 +433,7 @@ void VFD_RecallLine(uint16_t lineNumber)
     default:
         break;
     }
+    return ptrLineBufferRecall;
 }
 
 uint16_t VFD_ReplayLine(uint16_t lineNumber, uint16_t charNumber)

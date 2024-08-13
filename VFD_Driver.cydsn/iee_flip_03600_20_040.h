@@ -111,7 +111,7 @@ uint16_t VFD_InitDisplayHistory(void);
 uint16_t VFD_PostToHistory(char newData);
 uint16_t VFD_CreateNewLine(void);
 uint8_t VFD_UpdateDisplay(void);
-void VFD_RecallLine(uint16_t lineNumber);
+char* VFD_RecallLine(uint16_t lineNumber);
 uint16_t VFD_ReplayLine(uint16_t lineNumber, uint16_t charNumber);
 uint16_t VFD_ReturnHome(void);
 uint16_t VFD_GoToOldest(void);
