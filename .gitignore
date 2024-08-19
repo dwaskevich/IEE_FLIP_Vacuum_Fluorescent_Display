@@ -1,0 +1,4 @@
+# STM32 git ignore
+.metadata/
+.settings/
+Debug/
