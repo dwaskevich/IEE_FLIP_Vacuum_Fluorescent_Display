@@ -29,7 +29,9 @@
 
 void hw_delay_ms(uint8_t value)
 {
-	HAL_Delay(value);
+//	HAL_Delay(value);
+	uint32_t delayCount = value * STM32_72MHZ_MS_COUNT;
+	while(delayCount--);
 }
 
 void write_nWR(uint8_t value)

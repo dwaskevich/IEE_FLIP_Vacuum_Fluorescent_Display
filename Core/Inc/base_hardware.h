@@ -20,6 +20,8 @@
 
 #include "main.h"
 
+#define STM32_72MHZ_MS_COUNT	(6000u)
+
 void hw_delay_ms(uint8_t value);
 void write_nWR(uint8_t value);
 void write_nCS(uint8_t value);
