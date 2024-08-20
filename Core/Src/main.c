@@ -14,6 +14,58 @@
   * If no LICENSE file comes with this software, it is provided AS-IS.
   *
   ******************************************************************************
+  *
+  * Date:    18-Aug-2024
+  * Author:  David Waskevich
+  *
+  * Description: Test application for IEE FLIP 03600-20-040 Vacuum Fluorescent Display
+  *
+  *              Note - adapted/ported from original Sparkfun FreeSOC2 PSoC5LP/CortexM3-based
+  *              Arduino-style development kit version available in develop branch of
+  *              https://github.com/dwaskevich/IEE_FLIP_Vacuum_Fluorescent_Display.git
+  *
+  * Hardware:    STM32 Blue Pill (https://predictabledesigns.com/introduction-stm32-blue-pill-stm32duino/)
+  *              STM32F103C8T6 CortexM3-based development kit (64K Flash/20K SRAM, 3.3V)
+  *              -> note, 20k Flash used (30%), 18.77k SRAM used (94%)
+  *
+  * IDE:         STM32CubeIDE Version: 1.16.0
+  *
+  * Wiring:      8-bit parallel data bus to display --> PA[7:0] (BluePill P3 header, pins 12-5)
+  *              /CS   - PB0  (BluePill P3 header, pin 13)
+  *               A0   - PB1  (BluePill P3 header, pin 14)
+  *              /WR   - PB10 (BluePill P3 header, pin 15)
+  *              /RD   - PB11 ... not used (BluePill P3 header, pin 16)
+  *              /TEST - PC15 (BluePill P3 header, pin 4)
+  *
+  * Peripheral setup:
+  *              UART - USART1 ... Tx = PA9, Rx = PA10
+  *              Escape sequence timeout timer - TIM1 (oneshot mode, 20 ms interrupt)
+  *              Readback timer - TIM2 (oneshot mode, 20/50 ms interrupt)
+  *              Program/Debug - SWD ... PA13 (SWDIO)/PA14 (SWDCK)
+  *
+  * Serial terminal (TeraTerm, etc) navigation:
+  *              Up/Down arrow keys - scroll back/forward to previous/next line
+  *              Right/Left arrow keys - replay line, fast/normal playback speed
+  *              PageUp/PageDown keys - scroll back/forward PAGE_JUMP_SIZE lines
+  *              Home key - return to the most recent line
+  *              End key - go directly to the oldest line/record
+  *              Delete key - enter pause/single-step mode (subsequent presses single-steps readback)
+  *              Insert key - dual-purpose for now ... print the deepest FIFO level so far
+  *              	and resume readback (i.e. restart readback/TIM2 timer)
+  *              Escape key - abandon (escape) a readback by quickly recalling the line
+  *
+  * Usage:       #include <iee_flip_03600_20_040.h>
+  *              NOTE - arbitrarily chose BELL (ctrl-G) character to reset display.  *
+  *
+  * Update 18-Aug-2024:
+  *		- imported source/header files from PSoC version
+  *
+  * Update 19-Aug-2024:
+  *		- completed low-level hardware drivers for STM32
+  *
+  * Update 20-Aug-2024:
+  *		- replaced HAL_Delay with cycle count
+  *
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
@@ -57,14 +109,14 @@ TIM_HandleTypeDef htim2;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-volatile uint16_t fifo_MaxLevelReached;
-uint8_t rxBuffer[80];
-volatile uint16_t headPointer = 0, tailPointer = 0;
-uint8_t rxFIFO[UART_FIFO_SIZE];
-
+volatile uint16_t fifo_MaxLevelReached; /* debug-oriented measure of FIFO utilization */
+uint8_t rxBuffer[80]; /* may not be necessary, single variable may be enough ... needs testing */
+volatile uint16_t headPointer = 0, tailPointer = 0; /* FIFO head and tail pointers */
+uint8_t rxFIFO[UART_FIFO_SIZE]; /* Rx FIFO ... no rollover protection, older characters overwritten if FIFO fills */
+/* main loop decision flags */
 volatile bool timeoutFlag = false, readBackFlag = false, singleStepFlag = false;
 
-/* Escape sequence state machine */
+/* Escape sequence state machine (decodes/parses multi-character keyboard escape sequences) */
 enum escSeqStates
 {
     ESCAPE, /* ESC character (0x1b) detected */
@@ -137,7 +189,7 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_UART_Receive_IT(&huart1, rxBuffer, 1);
+  HAL_UART_Receive_IT(&huart1, rxBuffer, 1); /* start UART in interrupt mode */
   HAL_UART_Transmit(&huart1, (uint8_t *) "\x1b[2J\x1b[;HUART started\r\n", sizeof("\x1b[2J\x1b[;HUART started\r\n"), 500);
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, LED_OFF);
 
@@ -198,15 +250,15 @@ int main(void)
 		  }
 		  else if(DEL == rxData) /* enter pause/single-step mode */
 		  {
-			  HAL_TIM_Base_Stop_IT(&htim2);
+			  HAL_TIM_Base_Stop_IT(&htim2); /* stop the readback timer */
 			  sprintf((char *) printBuffer, "DEL - single stepping line number %d\r\n", recallLineNumber);
 			  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
 			  singleStepFlag = true;
 		  }
 		  else if(ESC == rxData) /* ESC key detected ... determine if it's just the ESC key or beginning of an escape sequence */
 		  {
-              escSequenceNum = 0; /* track the number of characters in the escape sequence */
-              escSequence[escSequenceNum++] = rxData; /* save ESC character for later */
+              escSequenceNum = 0; /* track the number of characters in the escape sequence (debug) */
+              escSequence[escSequenceNum++] = rxData; /* save ESC character for later (also debug) */
               isEchoFlag = false; /* negate flag to prevent escape sequence characters from being echoed */
               isEscapeSequenceFlag = true; /* ESC key detected, escape sequence is (potentially) active */
               HAL_TIM_Base_Start_IT(&htim1); /* start timeout timer (timeout period set to 20ms), will abort sequence if oneshot timer expires */
@@ -644,21 +696,24 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(nTEST_GPIO_Port, nTEST_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, D0_Pin|D1_Pin|D2_Pin|D3_Pin
                           |D4_Pin|D5_Pin|D6_Pin|D7_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, nCS_Pin|nWR_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, nCS_Pin|nWR_Pin|nRD_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(A0_GPIO_Port, A0_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : LED1_Pin */
-  GPIO_InitStruct.Pin = LED1_Pin;
+  /*Configure GPIO pins : LED1_Pin nTEST_Pin */
+  GPIO_InitStruct.Pin = LED1_Pin|nTEST_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED1_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : D0_Pin D1_Pin D2_Pin D3_Pin
                            D4_Pin D5_Pin D6_Pin D7_Pin */
@@ -669,8 +724,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : nCS_Pin A0_Pin nWR_Pin */
-  GPIO_InitStruct.Pin = nCS_Pin|A0_Pin|nWR_Pin;
+  /*Configure GPIO pins : nCS_Pin A0_Pin nWR_Pin nRD_Pin */
+  GPIO_InitStruct.Pin = nCS_Pin|A0_Pin|nWR_Pin|nRD_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -684,7 +739,7 @@ static void MX_GPIO_Init(void)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	rxFIFO[headPointer++] = rxBuffer[0]; /* place received character from UART in FIFO */
-	if(headPointer >= UART_FIFO_SIZE) /* manage headPointer rollover */
+	if(headPointer >= UART_FIFO_SIZE) /* manage headPointer rollover (new arrivals will overwrite older) */
 		headPointer = 0;
 
 	/* calculate MAX FIFO level reached ... adjust formula based on rollover */
@@ -698,10 +753,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 		if(headPointer + UART_FIFO_SIZE - tailPointer > fifo_MaxLevelReached)
 			fifo_MaxLevelReached = headPointer + UART_FIFO_SIZE - tailPointer;
 	}
-    HAL_UART_Receive_IT(&huart1, rxBuffer, 1);
+    HAL_UART_Receive_IT(&huart1, rxBuffer, 1); /* restart UART Rx interrupt */
 }
 
 /**
+  * TIM1 - escape sequence time-out timer, TIM2 readback timer
+  *
   * @brief  Period elapsed callback in non blocking mode
   * @param  htim : TIM handle
   * @retval None

@@ -50,6 +50,8 @@
  *                  displays an ASCII up-count while TEST pin is held low.
  *              Cursor position starts at 0 (not 1)
  *
+ *              A0 determines if data bus contains Command (1) or Data (0)
+ *
  * 6-pin Molex power connector:
  *                  Pin #       Function
  *                  -----       --------------
@@ -66,7 +68,7 @@
  *                  1            TEST                       39
  *                  3           /CS (Chip Select)           6
  *                  5           /RD (Read, not used here)   8
- *                  7            A0 (Command/Data)          9
+ *                  7            A0 (Command/nData)         9
  *                  9           /WR (Write)                 10
  *                  11-25        D0-D7                      12-19
  *                  2-26         GND
@@ -103,7 +105,7 @@ stc_Display* ptr_stc_Display = stc_DisplayHistory;
 /* declare a pointer to the line buffer associated with each member of the history array (incoming printable characters will be stored here */
 char* ptrLineBuffer;
 
-/* declare and assign pointer to display history array for recall and readback functions (managed seperately from active pointers) */
+/* declare and assign pointer to display history array for recall and readback functions (managed separately from active pointers) */
 stc_Display* ptr_stc_DisplayRecall = stc_DisplayHistory;
 /* declare a pointer to the line buffer */
 char* ptrLineBufferRecall;
@@ -144,7 +146,7 @@ void VFD_WriteDisplay(uint8_t value)
 uint8_t VFD_ReadDisplay(void)
 {
     uint8_t data;
-    write_A0(0);
+    write_A0(0); /* A0 determines if data bus contains Command (1) or Data (0) ... set to Data) */
     write_nRD(0);
     hw_delay_ms(5);
     data = read_DataBus();
@@ -155,7 +157,7 @@ uint8_t VFD_ReadDisplay(void)
 uint16_t VFD_PositionCursor(uint8_t position)
 {
     uint8_t i = 0;
-    write_A0(0);
+    write_A0(0); /* A0 determines if data bus contains Command (1) or Data (0) ... set to Data) */
     if(position > DISPLAY_LINE_LENGTH) /* check for valid position */
         position = position % DISPLAY_LINE_LENGTH; /* arbitrarily remove integral line lengths */
     VFD_WriteDisplay(CR); /* simulate Carriage Return (CR) ... returns cursor to home position */
@@ -168,7 +170,7 @@ uint16_t VFD_PositionCursor(uint8_t position)
 
 void VFD_PutChar(char value)
 {
-	write_A0(0);
+	write_A0(0); /* A0 determines if data bus contains Command (1) or Data (0) ... set to Data) */
 	VFD_WriteDisplay(value); /* writes character to current cursor position */
 }
 
@@ -178,7 +180,7 @@ uint16_t VFD_PutString(char *str)
         return 0;
 
     uint16_t i = 0;
-    write_A0(0);
+    write_A0(0); /* A0 determines if data bus contains Command (1) or Data (0) ... set to Data) */
     while('\0' != str[i] && i <= INPUT_BUFFER_LENGTH)
     {
         VFD_WriteDisplay(str[i++]); /* write next character from string */
@@ -188,10 +190,10 @@ uint16_t VFD_PutString(char *str)
 
 void VFD_ClearDisplay(void)
 {
-    write_A0(1);
+    write_A0(1); /* A0 determines if data bus contains Command (1) or Data (0) ... set to Command) */
     write_DataBus(CLR);
     toggleStrobe(WRITE_DELAY_MS);
-    write_A0(0);
+    write_A0(0); /* A0 determines if data bus contains Command (1) or Data (0) ... set to Data) */
     write_DataBus(LF);
     toggleStrobe(WRITE_DELAY_MS);
 }
@@ -199,7 +201,7 @@ void VFD_ClearDisplay(void)
 /* End of line modes are EOL_WRAP & EOL_STOP */
 void VFD_SetEndOfLineWrap(uint8_t mode)
 {
-	write_A0(0);
+	write_A0(0); /* A0 determines if data bus contains Command (1) or Data (0) ... set to Data) */
 	VFD_WriteDisplay(mode);
 }
 

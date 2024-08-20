@@ -59,6 +59,8 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define LED1_Pin GPIO_PIN_13
 #define LED1_GPIO_Port GPIOC
+#define nTEST_Pin GPIO_PIN_15
+#define nTEST_GPIO_Port GPIOC
 #define D0_Pin GPIO_PIN_0
 #define D0_GPIO_Port GPIOA
 #define D1_Pin GPIO_PIN_1
@@ -81,6 +83,8 @@ void Error_Handler(void);
 #define A0_GPIO_Port GPIOB
 #define nWR_Pin GPIO_PIN_10
 #define nWR_GPIO_Port GPIOB
+#define nRD_Pin GPIO_PIN_11
+#define nRD_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
