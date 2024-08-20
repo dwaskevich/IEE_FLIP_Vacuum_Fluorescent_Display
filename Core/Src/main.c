@@ -141,6 +141,9 @@ int main(void)
   HAL_UART_Transmit(&huart1, (uint8_t *) "\x1b[2J\x1b[;HUART started\r\n", sizeof("\x1b[2J\x1b[;HUART started\r\n"), 500);
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, LED_OFF);
 
+  /* initialize VFD display (returns entry mode defined in .h file) */
+  entryMode = VFD_InitializeDisplay(DEFAULT_ENTRY_MODE);
+
   /* initialize display history */
   sprintf((char *) printBuffer, "Initializing display history. Number of pages = %d\r\n", VFD_InitDisplayHistory());
   HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
@@ -178,7 +181,7 @@ int main(void)
 
               replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
               clearDisplayFlag = true; /* reminder to clear display on next received character (style/aesthetic choice) */
-//              HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, LED_ON); /* UserLED "ON" to indicate end-of-line (display clear pending) */
+              HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, LED_ON); /* UserLED "ON" to indicate end-of-line (display clear pending) */
 
               currentLineBufferID = VFD_CreateNewLine(); /* get index for new/next line in DisplayHistory array */
               recallLineNumber = currentLineBufferID; /* make note of current line as the new recall line number */
@@ -393,7 +396,7 @@ int main(void)
           {
               if(true == clearDisplayFlag) /* reminder to clear display if this is the first character of a new line */
               {
-//            	  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, LED_OFF); /* cosmetics ... LED_OFF indicates new line in progress */
+            	  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, LED_OFF); /* cosmetics ... LED_OFF indicates new line in progress */
                   replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
                   VFD_ClearDisplay(); /* this is the first character of a new line, clear display */
                   if(RIGHT_ENTRY == entryMode) /* cosmetic (positions underline at end of display) */
@@ -635,9 +638,20 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, D0_Pin|D1_Pin|D2_Pin|D3_Pin
+                          |D4_Pin|D5_Pin|D6_Pin|D7_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, nCS_Pin|nWR_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(A0_GPIO_Port, A0_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : LED1_Pin */
   GPIO_InitStruct.Pin = LED1_Pin;
@@ -645,6 +659,22 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : D0_Pin D1_Pin D2_Pin D3_Pin
+                           D4_Pin D5_Pin D6_Pin D7_Pin */
+  GPIO_InitStruct.Pin = D0_Pin|D1_Pin|D2_Pin|D3_Pin
+                          |D4_Pin|D5_Pin|D6_Pin|D7_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : nCS_Pin A0_Pin nWR_Pin */
+  GPIO_InitStruct.Pin = nCS_Pin|A0_Pin|nWR_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */

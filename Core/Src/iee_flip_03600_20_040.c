@@ -139,12 +139,12 @@ void VFD_WriteDisplay(uint8_t value)
     /* general 8-bit write ... per 8041 data sheet, data setup time to trailing (rising) edge of /WR is 150ns */
     write_DataBus(value);
     toggleStrobe(WRITE_DELAY_MS);
-    HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
 }
 
 uint8_t VFD_ReadDisplay(void)
 {
     uint8_t data;
+    write_A0(0);
     write_nRD(0);
     hw_delay_ms(5);
     data = read_DataBus();
@@ -155,6 +155,7 @@ uint8_t VFD_ReadDisplay(void)
 uint16_t VFD_PositionCursor(uint8_t position)
 {
     uint8_t i = 0;
+    write_A0(0);
     if(position > DISPLAY_LINE_LENGTH) /* check for valid position */
         position = position % DISPLAY_LINE_LENGTH; /* arbitrarily remove integral line lengths */
     VFD_WriteDisplay(CR); /* simulate Carriage Return (CR) ... returns cursor to home position */
@@ -167,7 +168,8 @@ uint16_t VFD_PositionCursor(uint8_t position)
 
 void VFD_PutChar(char value)
 {
-    VFD_WriteDisplay(value); /* writes character to current cursor position */
+	write_A0(0);
+	VFD_WriteDisplay(value); /* writes character to current cursor position */
 }
 
 uint16_t VFD_PutString(char *str)
@@ -176,6 +178,7 @@ uint16_t VFD_PutString(char *str)
         return 0;
 
     uint16_t i = 0;
+    write_A0(0);
     while('\0' != str[i] && i <= INPUT_BUFFER_LENGTH)
     {
         VFD_WriteDisplay(str[i++]); /* write next character from string */
@@ -196,7 +199,8 @@ void VFD_ClearDisplay(void)
 /* End of line modes are EOL_WRAP & EOL_STOP */
 void VFD_SetEndOfLineWrap(uint8_t mode)
 {
-    VFD_WriteDisplay(mode);
+	write_A0(0);
+	VFD_WriteDisplay(mode);
 }
 
 void VFD_Test(uint8_t value)
