@@ -106,6 +106,7 @@
 #define COLUMN_ACTIVE	(0u)
 
 #define NUM_DISPLAY_COLUMNS		(9u)
+#define INTRA_COLUMN_DELAY		(1u)
 
 /* USER CODE END PD */
 
@@ -120,6 +121,7 @@ I2C_HandleTypeDef hi2c1;
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart1;
 
@@ -153,7 +155,10 @@ static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
+
+void delay_us(uint16_t delay);
 
 /* USER CODE END PFP */
 
@@ -210,6 +215,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_I2C1_Init();
   MX_TIM3_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_UART_Receive_IT(&huart1, rxBuffer, 1); /* start UART in interrupt mode */
@@ -232,6 +238,7 @@ int main(void)
   __HAL_TIM_CLEAR_IT(&htim3, TIM_FLAG_UPDATE);
 
   HAL_TIM_Base_Start_IT(&htim3);
+  HAL_TIM_Base_Start(&htim4);
 
   ButtonDebounceInit(&buttons0, 0);
   ButtonDebounceInit(&buttons1, 0);
@@ -770,6 +777,51 @@ static void MX_TIM3_Init(void)
 }
 
 /**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 36-1;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 65535;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -863,7 +915,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pin = Col3_Pin|Col2_Pin|Col1_Pin|Col0_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : Row3_Pin */
@@ -883,6 +935,12 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void delay_us(uint16_t delay)
+{
+	__HAL_TIM_SET_COUNTER(&htim4, 0);
+	while(__HAL_TIM_GET_COUNTER(&htim4) < delay);
+}
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	rxFIFO[headPointer++] = rxBuffer[0]; /* place received character from UART in FIFO */
@@ -933,6 +991,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   				HAL_GPIO_WritePin(Col2_GPIO_Port, Col2_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col3_GPIO_Port, Col3_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col0_GPIO_Port, Col0_Pin, COLUMN_ACTIVE);
+  				delay_us(INTRA_COLUMN_DELAY);
   				rawButtons0 = (!HAL_GPIO_ReadPin(Row0_GPIO_Port, Row0_Pin)) | (!HAL_GPIO_ReadPin(Row1_GPIO_Port, Row1_Pin)) << 1 | \
   						 (!HAL_GPIO_ReadPin(Row2_GPIO_Port, Row2_Pin)) << 2 | (!HAL_GPIO_ReadPin(Row3_GPIO_Port, Row3_Pin)) << 3;
 
@@ -944,6 +1003,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   				HAL_GPIO_WritePin(Col2_GPIO_Port, Col2_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col3_GPIO_Port, Col3_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col1_GPIO_Port, Col1_Pin, COLUMN_ACTIVE);
+  				delay_us(INTRA_COLUMN_DELAY);
   				rawButtons0 |= ((!HAL_GPIO_ReadPin(Row0_GPIO_Port, Row0_Pin)) | (!HAL_GPIO_ReadPin(Row1_GPIO_Port, Row1_Pin)) << 1 | \
   						 (!HAL_GPIO_ReadPin(Row2_GPIO_Port, Row2_Pin)) << 2 | (!HAL_GPIO_ReadPin(Row3_GPIO_Port, Row3_Pin)) << 3) << 4;
 
@@ -955,6 +1015,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   				HAL_GPIO_WritePin(Col1_GPIO_Port, Col1_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col3_GPIO_Port, Col3_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col2_GPIO_Port, Col2_Pin, COLUMN_ACTIVE);
+  				delay_us(INTRA_COLUMN_DELAY);
   				rawButtons1 = (!HAL_GPIO_ReadPin(Row0_GPIO_Port, Row0_Pin)) | (!HAL_GPIO_ReadPin(Row1_GPIO_Port, Row1_Pin)) << 1 | \
   						 (!HAL_GPIO_ReadPin(Row2_GPIO_Port, Row2_Pin)) << 2 | (!HAL_GPIO_ReadPin(Row3_GPIO_Port, Row3_Pin)) << 3;
 
@@ -966,6 +1027,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   				HAL_GPIO_WritePin(Col1_GPIO_Port, Col1_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col2_GPIO_Port, Col2_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col3_GPIO_Port, Col3_Pin, COLUMN_ACTIVE);
+  				delay_us(INTRA_COLUMN_DELAY);
   				rawButtons1 |= ((!HAL_GPIO_ReadPin(Row0_GPIO_Port, Row0_Pin)) | (!HAL_GPIO_ReadPin(Row1_GPIO_Port, Row1_Pin)) << 1 | \
   						 (!HAL_GPIO_ReadPin(Row2_GPIO_Port, Row2_Pin)) << 2 | (!HAL_GPIO_ReadPin(Row3_GPIO_Port, Row3_Pin)) << 3) << 4;
 
