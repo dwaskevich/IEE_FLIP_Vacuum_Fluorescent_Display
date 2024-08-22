@@ -85,6 +85,22 @@ void Error_Handler(void);
 #define nWR_GPIO_Port GPIOB
 #define nRD_Pin GPIO_PIN_11
 #define nRD_GPIO_Port GPIOB
+#define Col3_Pin GPIO_PIN_12
+#define Col3_GPIO_Port GPIOB
+#define Col2_Pin GPIO_PIN_13
+#define Col2_GPIO_Port GPIOB
+#define Col1_Pin GPIO_PIN_14
+#define Col1_GPIO_Port GPIOB
+#define Col0_Pin GPIO_PIN_15
+#define Col0_GPIO_Port GPIOB
+#define Row3_Pin GPIO_PIN_15
+#define Row3_GPIO_Port GPIOA
+#define Row2_Pin GPIO_PIN_3
+#define Row2_GPIO_Port GPIOB
+#define Row1_Pin GPIO_PIN_4
+#define Row1_GPIO_Port GPIOB
+#define Row0_Pin GPIO_PIN_5
+#define Row0_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

@@ -66,6 +66,12 @@
   * Update 20-Aug-2024:
   *		- replaced HAL_Delay with cycle count
   *
+  * Update 22-Aug-2024:
+  *		- added 4x4 switch matrix
+  *		- imported debounce library from https://github.com/tcleg/Button_Debouncer/tree/master
+  *			-> note ... debounce library is an implementation of Jack Ganssle (https://www.ganssle.com/debouncing-pt2.htm)
+  *
+  *
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
@@ -78,6 +84,7 @@
 #include "stdio.h"
 #include "string.h"
 #include "stdbool.h"
+#include "button_debounce.h"
 
 /* USER CODE END Includes */
 
@@ -95,6 +102,11 @@
 #define LED_OFF     (1u)
 #define LED_ON      (0u)
 
+#define COLUMN_INACTIVE	(1u)
+#define COLUMN_ACTIVE	(0u)
+
+#define NUM_DISPLAY_COLUMNS		(9u)
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -103,8 +115,11 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart1;
 
@@ -114,7 +129,10 @@ uint8_t rxBuffer[80]; /* may not be necessary, single variable may be enough ...
 volatile uint16_t headPointer = 0, tailPointer = 0; /* FIFO head and tail pointers */
 uint8_t rxFIFO[UART_FIFO_SIZE]; /* Rx FIFO ... no rollover protection, older characters overwritten if FIFO fills */
 /* main loop decision flags */
-volatile bool timeoutFlag = false, readBackFlag = false, singleStepFlag = false;
+volatile bool timeoutFlag = false, readBackFlag = false, singleStepFlag = false, readButtonFlag = false;
+volatile uint8_t rawButtons0 = 0, rawButtons1 = 0;
+Debouncer buttons0;
+Debouncer buttons1;
 
 /* Escape sequence state machine (decodes/parses multi-character keyboard escape sequences) */
 enum escSeqStates
@@ -133,6 +151,8 @@ static void MX_GPIO_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_I2C1_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -163,6 +183,7 @@ int main(void)
   static uint16_t recallLineNumber = 0;
   static uint16_t replayCharNumber = 0;
   uint8_t* str;
+  uint16_t buttonsPressed = 0, previousButtonsPressed = 0;
 
   /* USER CODE END 1 */
 
@@ -187,6 +208,8 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM2_Init();
   MX_USART1_UART_Init();
+  MX_I2C1_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_UART_Receive_IT(&huart1, rxBuffer, 1); /* start UART in interrupt mode */
@@ -206,6 +229,12 @@ int main(void)
   /* clear timer interrupts before starting forever loop */
   __HAL_TIM_CLEAR_IT(&htim1, TIM_FLAG_UPDATE);
   __HAL_TIM_CLEAR_IT(&htim2, TIM_FLAG_UPDATE);
+  __HAL_TIM_CLEAR_IT(&htim3, TIM_FLAG_UPDATE);
+
+  HAL_TIM_Base_Start_IT(&htim3);
+
+  ButtonDebounceInit(&buttons0, 0);
+  ButtonDebounceInit(&buttons1, 0);
 
   /* USER CODE END 2 */
 
@@ -505,6 +534,25 @@ int main(void)
           updateDisplayFlag = FALSE;
       }
 
+      if(TRUE == readButtonFlag)
+      {
+    	  ButtonProcess(&buttons0, rawButtons0);
+    	  ButtonProcess(&buttons1, rawButtons1);
+
+    	  readButtonFlag = false;
+      }
+
+      buttonsPressed = (ButtonCurrent(&buttons1, BUTTON_PIN_0 | BUTTON_PIN_1 | BUTTON_PIN_2 | BUTTON_PIN_3 | BUTTON_PIN_4 | BUTTON_PIN_5 | BUTTON_PIN_6 | BUTTON_PIN_7)) << 8;
+      buttonsPressed |= ButtonCurrent(&buttons0, BUTTON_PIN_0 | BUTTON_PIN_1 | BUTTON_PIN_2 | BUTTON_PIN_3 | BUTTON_PIN_4 | BUTTON_PIN_5 | BUTTON_PIN_6 | BUTTON_PIN_7);
+      if(buttonsPressed != previousButtonsPressed)
+	  {
+		  sprintf((char *) printBuffer, "Buttons pressed = 0x%04x\r\n", buttonsPressed);
+		  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
+		  previousButtonsPressed = buttonsPressed;
+      }
+
+
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -549,6 +597,40 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
 }
 
 /**
@@ -643,6 +725,51 @@ static void MX_TIM2_Init(void)
 }
 
 /**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 0;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 40000-1;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -703,7 +830,8 @@ static void MX_GPIO_Init(void)
                           |D4_Pin|D5_Pin|D6_Pin|D7_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, nCS_Pin|nWR_Pin|nRD_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, nCS_Pin|nWR_Pin|nRD_Pin|Col3_Pin
+                          |Col2_Pin|Col1_Pin|Col0_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(A0_GPIO_Port, A0_Pin, GPIO_PIN_RESET);
@@ -729,6 +857,25 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : Col3_Pin Col2_Pin Col1_Pin Col0_Pin */
+  GPIO_InitStruct.Pin = Col3_Pin|Col2_Pin|Col1_Pin|Col0_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : Row3_Pin */
+  GPIO_InitStruct.Pin = Row3_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(Row3_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : Row2_Pin Row1_Pin Row0_Pin */
+  GPIO_InitStruct.Pin = Row2_Pin|Row1_Pin|Row0_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -765,6 +912,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
+	static uint8_t columnCounter;
 	if(htim->Instance == TIM1)
 	{
 		timeoutFlag = true; /* set timeOut flag to indicate escape sequence parsing should be abandoned/aborted */
@@ -774,6 +922,65 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	{
 		readBackFlag = true; /* set flag to indicate that a new readback character can be requested */
 		HAL_TIM_Base_Stop_IT(htim);
+	}
+	if(htim->Instance == TIM3) /* switch matrix multiplexing */
+	{
+  		switch(columnCounter++)
+  		{
+  			case 0:
+  				rawButtons0 &= 0xf0;
+  				HAL_GPIO_WritePin(Col1_GPIO_Port, Col1_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col2_GPIO_Port, Col2_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col3_GPIO_Port, Col3_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col0_GPIO_Port, Col0_Pin, COLUMN_ACTIVE);
+  				rawButtons0 = (!HAL_GPIO_ReadPin(Row0_GPIO_Port, Row0_Pin)) | (!HAL_GPIO_ReadPin(Row1_GPIO_Port, Row1_Pin)) << 1 | \
+  						 (!HAL_GPIO_ReadPin(Row2_GPIO_Port, Row2_Pin)) << 2 | (!HAL_GPIO_ReadPin(Row3_GPIO_Port, Row3_Pin)) << 3;
+
+  				break;
+
+  			case 1:
+  				rawButtons0 &= 0x0f;
+  				HAL_GPIO_WritePin(Col0_GPIO_Port, Col0_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col2_GPIO_Port, Col2_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col3_GPIO_Port, Col3_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col1_GPIO_Port, Col1_Pin, COLUMN_ACTIVE);
+  				rawButtons0 |= ((!HAL_GPIO_ReadPin(Row0_GPIO_Port, Row0_Pin)) | (!HAL_GPIO_ReadPin(Row1_GPIO_Port, Row1_Pin)) << 1 | \
+  						 (!HAL_GPIO_ReadPin(Row2_GPIO_Port, Row2_Pin)) << 2 | (!HAL_GPIO_ReadPin(Row3_GPIO_Port, Row3_Pin)) << 3) << 4;
+
+  				break;
+
+  			case 2:
+  				rawButtons1 &= 0xf0;
+  				HAL_GPIO_WritePin(Col0_GPIO_Port, Col0_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col1_GPIO_Port, Col1_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col3_GPIO_Port, Col3_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col2_GPIO_Port, Col2_Pin, COLUMN_ACTIVE);
+  				rawButtons1 = (!HAL_GPIO_ReadPin(Row0_GPIO_Port, Row0_Pin)) | (!HAL_GPIO_ReadPin(Row1_GPIO_Port, Row1_Pin)) << 1 | \
+  						 (!HAL_GPIO_ReadPin(Row2_GPIO_Port, Row2_Pin)) << 2 | (!HAL_GPIO_ReadPin(Row3_GPIO_Port, Row3_Pin)) << 3;
+
+  				break;
+
+  			case 3:
+  				rawButtons1 &= 0x0f;
+  				HAL_GPIO_WritePin(Col0_GPIO_Port, Col0_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col1_GPIO_Port, Col1_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col2_GPIO_Port, Col2_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col3_GPIO_Port, Col3_Pin, COLUMN_ACTIVE);
+  				rawButtons1 |= ((!HAL_GPIO_ReadPin(Row0_GPIO_Port, Row0_Pin)) | (!HAL_GPIO_ReadPin(Row1_GPIO_Port, Row1_Pin)) << 1 | \
+  						 (!HAL_GPIO_ReadPin(Row2_GPIO_Port, Row2_Pin)) << 2 | (!HAL_GPIO_ReadPin(Row3_GPIO_Port, Row3_Pin)) << 3) << 4;
+
+  				break;
+
+  			default:
+
+  				break;
+  		}
+
+  		if(columnCounter >= NUM_DISPLAY_COLUMNS)
+  		{
+  			columnCounter = 0;
+  			readButtonFlag = true;
+  		}
 	}
 }
 
