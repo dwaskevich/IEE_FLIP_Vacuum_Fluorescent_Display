@@ -145,6 +145,28 @@ enum escSeqStates
 };
 enum escSeqStates escSeqState = ESCAPE;
 
+/* Switch matrix key names */
+enum switchMatrix
+{
+	NONE		=	0x0000,
+	ONE			=	0x0001,
+	FOUR		=	0x0002,
+	SEVEN		=	0x0004,
+	ASTERISK	=	0x0008,
+	TWO			=	0x0010,
+	FIVE		=	0x0020,
+	EIGHT		=	0x0040,
+	ZERO		=	0x0080,
+	THREE		=	0x0100,
+	SIX			=	0x0200,
+	NINE		=	0x0400,
+	HASH		=	0x0800,
+	SINGLE_STEP	=	0x1000,
+	RESUME		=	0x2000,
+	SCROLL_UP	=	0x4000,
+	SCROLL_DOWN	=	0x8000
+} keyNames;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -553,9 +575,142 @@ int main(void)
       buttonsPressed |= ButtonCurrent(&buttons0, BUTTON_PIN_0 | BUTTON_PIN_1 | BUTTON_PIN_2 | BUTTON_PIN_3 | BUTTON_PIN_4 | BUTTON_PIN_5 | BUTTON_PIN_6 | BUTTON_PIN_7);
       if(buttonsPressed != previousButtonsPressed)
 	  {
-		  sprintf((char *) printBuffer, "Buttons pressed = 0x%04x\r\n", buttonsPressed);
-		  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
+//		  sprintf((char *) printBuffer, "Buttons pressed = 0x%04x\r\n", buttonsPressed);
+//		  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
 		  previousButtonsPressed = buttonsPressed;
+
+		  switch(buttonsPressed)
+		  {
+		  	  case	NONE:
+
+		  		  break;
+
+		  	  case	SCROLL_UP:
+		  		if(0 == recallLineNumber) /* handle circular boundary */
+				  recallLineNumber = NUMBER_PAGES - 1;
+		  		else
+				  recallLineNumber -= 1;
+		  		sprintf((char *) printBuffer, "Scroll up,    recall line\t... %3d\t", recallLineNumber);
+		  		HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
+		  		replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
+		  		str = VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
+		  		HAL_UART_Transmit(&huart1, str, strlen((char *) str), 100);
+		  		HAL_UART_Transmit(&huart1, (uint8_t*)"\r\n", 2, 100);
+
+		  		break;
+
+		  	  case	SCROLL_DOWN:
+                  if((NUMBER_PAGES - 1) == recallLineNumber) /* handle circular boundary */
+                      recallLineNumber = 0;
+                  else
+                      recallLineNumber += 1;
+                  sprintf((char *) printBuffer, "Scroll down, recall line\t... %3d\t", recallLineNumber);
+                  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
+                  replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
+                  str = VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
+                  HAL_UART_Transmit(&huart1, str, strlen((char *) str), 100);
+                  HAL_UART_Transmit(&huart1, (uint8_t*)"\r\n", 2, 100);
+
+		  		break;
+
+		  	  case	SINGLE_STEP:
+				  HAL_TIM_Base_Stop_IT(&htim2); /* stop the readback timer */
+				  sprintf((char *) printBuffer, "Single stepping line number %d\r\n", recallLineNumber);
+				  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
+				  singleStepFlag = true;
+
+		  		break;
+
+		  	  case	RESUME:
+                  sprintf((char *) printBuffer, "fifo_MaxLevelReached = %d out of %d\r\n", fifo_MaxLevelReached, sizeof(rxFIFO));
+                  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
+                  HAL_UART_Transmit(&huart1, (uint8_t*)"restarting readback timer ...\r\n", strlen((char *)"restarting readback timer ...\r\n"), 100);
+                  HAL_TIM_Base_Start_IT(&htim2);
+
+		  		break;
+
+		  	  case	ASTERISK: /* Readback (replay) current line at fast speed */
+                  sprintf((char *) printBuffer, "Replay line (fast) %d\r\n", recallLineNumber);
+                  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
+                  VFD_ClearDisplay();
+                  __HAL_TIM_SetCounter(&htim2, 0);
+                  __HAL_TIM_SetAutoreload(&htim2, FAST_READBACK_TIMER_PERIOD); /* change readback speed */
+                  replayCharNumber = VFD_ReplayLine(recallLineNumber, 0); /* request to write character to display */
+                  HAL_TIM_Base_Start_IT(&htim2); /* readBackFlag (set in readback timer isr) will request the next character */
+
+		  		break;
+
+		  	  case	HASH: /* Readback (replay) current line at normal speed */
+                  sprintf((char *) printBuffer, "Replay line (normal speed) %d\r\n", recallLineNumber);
+                  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
+                  VFD_ClearDisplay();
+                  __HAL_TIM_SetCounter(&htim2, 0);
+                  __HAL_TIM_SetAutoreload(&htim2, READBACK_TIMER_PERIOD); /* change readback speed */
+                  replayCharNumber = VFD_ReplayLine(recallLineNumber, 0); /* request to write character to display */
+                  HAL_TIM_Base_Start_IT(&htim2); /* readBackFlag (set in readback timer isr) will request the next character */
+
+		  		break;
+
+		  	  case	ZERO: /* (ESCape) - return immediately to end of current line */
+                  sprintf((char *) printBuffer, "Return to end of line %d\r\n", recallLineNumber);
+                  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
+		  		  HAL_TIM_Base_Stop_IT(&htim2); /* don't need the readback timer interrupt any more ... just recall the line */
+		          replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
+		          VFD_RecallLine(recallLineNumber); /* just paint display quickly */
+
+		  		break;
+
+		  	  case	ONE: /* scroll back PAGE_JUMP_SIZE lines */
+                  if(recallLineNumber < PAGE_JUMP_SIZE) /* handle circular boundary */
+                      recallLineNumber = (NUMBER_PAGES - 1) - (PAGE_JUMP_SIZE - recallLineNumber);
+                  else
+                      recallLineNumber -= PAGE_JUMP_SIZE;
+                  sprintf((char *) printBuffer, "Recall line\t... %3d\t", recallLineNumber);
+                  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
+                  replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
+                  str = VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
+                  HAL_UART_Transmit(&huart1, str, strlen((char *) str), 100);
+                  HAL_UART_Transmit(&huart1, (uint8_t*)"\r\n", 2, 100);
+
+		  		break;
+
+		  	  case	FOUR: /* scroll forward PAGE_JUMP_SIZE lines */
+                  if(recallLineNumber >= (NUMBER_PAGES - 1) - PAGE_JUMP_SIZE) /* handle circular boundary */
+                      recallLineNumber = PAGE_JUMP_SIZE - ((NUMBER_PAGES - 1) - recallLineNumber);
+                  else
+                      recallLineNumber += PAGE_JUMP_SIZE;
+                  sprintf((char *) printBuffer, "Recall line\t... %3d\t", recallLineNumber);
+                  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
+                  replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
+                  str = VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
+                  HAL_UART_Transmit(&huart1, str, strlen((char *) str), 100);
+                  HAL_UART_Transmit(&huart1, (uint8_t*)"\r\n", 2, 100);
+
+		  		break;
+
+		  	  case	TWO: /* return to the most recent line */
+                  replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
+                  recallLineNumber = VFD_ReturnHome(); /* VFD_ReturnHome prints latest line and returns line number */
+                  sprintf((char *) printBuffer, "Return home - calling VFD_ReturnHome() ... returned line number %d\r\n", recallLineNumber);
+                  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
+
+		  		break;
+
+		  	  case	FIVE: /* go directly to the oldest line/record */
+                  replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
+                  recallLineNumber = VFD_GoToOldest(); /* VFD_GoToOldest searches/finds (then prints) oldest line in history and returns line number */
+                  sprintf((char *) printBuffer, "END - calling VFD_GoToOldest() ... returned line number %d\r\n", recallLineNumber);
+                  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
+
+		  		break;
+
+
+		  	  default:
+		  		HAL_UART_Transmit(&huart1, (uint8_t*)"Unassigned key\r\n", strlen((char *)"Unassigned key\r\n"), 100);
+
+		  		  break;
+
+		  }
       }
 
 
