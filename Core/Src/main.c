@@ -21,12 +21,12 @@
   * Description: Test application for IEE FLIP 03600-20-040 Vacuum Fluorescent Display
   *
   *              Note - adapted/ported from original Sparkfun FreeSOC2 PSoC5LP/CortexM3-based
-  *              Arduino-style development kit version available in develop branch of
-  *              https://github.com/dwaskevich/IEE_FLIP_Vacuum_Fluorescent_Display.git
+  *              Arduino-style development kit version (available in develop branch of
+  *              https://github.com/dwaskevich/IEE_FLIP_Vacuum_Fluorescent_Display.git)
   *
   * Hardware:    STM32 Blue Pill (https://predictabledesigns.com/introduction-stm32-blue-pill-stm32duino/)
   *              STM32F103C8T6 CortexM3-based development kit (64K Flash/20K SRAM, 3.3V)
-  *              -> note, 20k Flash used (30%), 18.77k SRAM used (94%)
+  *              -> note, 30k Flash used (47%), 19k SRAM used (95%)
   *
   * IDE:         STM32CubeIDE Version: 1.16.0
   *
@@ -41,6 +41,9 @@
   *              UART - USART1 ... Tx = PA9, Rx = PA10
   *              Escape sequence timeout timer - TIM1 (oneshot mode, 20 ms interrupt)
   *              Readback timer - TIM2 (oneshot mode, 20/50 ms interrupt)
+  *              Switch matrix timer - TIM3 (555 us interrupt)
+  *              Hardware-based delay - TIM4 (.5 us count)
+  *              I2C1 - future use (CapSense buttons)
   *              Program/Debug - SWD ... PA13 (SWDIO)/PA14 (SWDCK)
   *
   * Serial terminal (TeraTerm, etc) navigation:
@@ -53,6 +56,13 @@
   *              Insert key - dual-purpose for now ... print the deepest FIFO level so far
   *              	and resume readback (i.e. restart readback/TIM2 timer)
   *              Escape key - abandon (escape) a readback by quickly recalling the line
+  *
+  * 4x4 matrix button navigation:
+  *             		Col0	Col1	Col2	Col3
+  *             Row0	PageUp	Home	N/A		SingleStep
+  *             Row1	PageDn	End		N/A		Resume
+  *             Row2	N/A		N/A		N/A		ScrollUp
+  *             Row3	ReadBkF	Escape	ReadBk	ScrollDn
   *
   * Usage:       #include <iee_flip_03600_20_040.h>
   *              NOTE - arbitrarily chose BELL (ctrl-G) character to reset display.  *
@@ -76,6 +86,7 @@
   *		- modified behavior of single-step readback
   *			-> if held, single-step reads back characters at half the readback speed
   *			-> when released, readback timer is stopped and reloaded with previous readback speed value
+  *			-> press_and_release behaves the same (reads back one character for each button press)
   *
   *
   */
@@ -108,9 +119,9 @@
 #define LED_OFF     (1u)
 #define LED_ON      (0u)
 
-#define COLUMN_INACTIVE	(1u)
-#define COLUMN_ACTIVE	(0u)
-
+/* switch matrix defines */
+#define COLUMN_INACTIVE			(1u)
+#define COLUMN_ACTIVE			(0u)
 #define NUM_DISPLAY_COLUMNS		(9u)
 #define INTRA_COLUMN_DELAY		(1u)
 
@@ -142,7 +153,7 @@ volatile bool timeoutFlag = false, readBackFlag = false, singleStepFlag = false,
 volatile uint8_t rawButtons0 = 0, rawButtons1 = 0;
 Debouncer buttons0;
 Debouncer buttons1;
-/* timer restore value */
+/* timer restore variable */
 uint32_t timerRestorValue;
 
 /* Escape sequence state machine (decodes/parses multi-character keyboard escape sequences) */
@@ -158,18 +169,18 @@ enum escSeqStates escSeqState = ESCAPE;
 enum switchMatrix
 {
 	NONE		=	0x0000,
-	ONE			=	0x0001,
-	FOUR		=	0x0002,
+	ONE 		=	0x0001, PAGEUP = ONE,
+	FOUR 		=	0x0002, PAGEDN = FOUR,
 	SEVEN		=	0x0004,
-	ASTERISK	=	0x0008,
-	TWO			=	0x0010,
-	FIVE		=	0x0020,
+	ASTERISK	=	0x0008, READBKF = ASTERISK,
+	TWO			=	0x0010, GOHOME = TWO,
+	FIVE		=	0x0020, GOEND = FIVE,
 	EIGHT		=	0x0040,
-	ZERO		=	0x0080,
+	ZERO		=	0x0080, ESCRB = ZERO,
 	THREE		=	0x0100,
 	SIX			=	0x0200,
 	NINE		=	0x0400,
-	HASH		=	0x0800,
+	HASH		=	0x0800, READBK = HASH,
 	SINGLE_STEP	=	0x1000,
 	RESUME		=	0x2000,
 	SCROLL_UP	=	0x4000,
@@ -622,19 +633,19 @@ int main(void)
 
 		  		break;
 
-		  	  case	SINGLE_STEP:
+		  	  case	SINGLE_STEP: /* press&release reads back one character at a time, press&hold readbacks characters at half normal readback speed */
 				  HAL_TIM_Base_Stop_IT(&htim2); /* stop the readback timer */
 				  timerRestorValue = __HAL_TIM_GetAutoreload(&htim2); /* save timer value for later restore */
                   __HAL_TIM_SetCounter(&htim2, 0); /* reset counter */
                   __HAL_TIM_SetAutoreload(&htim2, SINGLE_STEP_TIMER_PERIOD); /* change readback speed */
-                  HAL_TIM_Base_Start_IT(&htim2); /* restart the timer */
+                  HAL_TIM_Base_Start_IT(&htim2); /* restart the timer ... interrupts will readback another character */
 				  sprintf((char *) printBuffer, "Single stepping line number %d\r\n", recallLineNumber);
 				  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
 				  singleStepFlag = true;
 
 		  		break;
 
-		  	  case	RESUME:
+		  	  case	RESUME: /* escape single-step mode (i.e. resume readback */
                   sprintf((char *) printBuffer, "fifo_MaxLevelReached = %d out of %d\r\n", fifo_MaxLevelReached, sizeof(rxFIFO));
                   HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
                   HAL_UART_Transmit(&huart1, (uint8_t*)"restarting readback timer ...\r\n", strlen((char *)"restarting readback timer ...\r\n"), 100);
@@ -642,7 +653,7 @@ int main(void)
 
 		  		break;
 
-		  	  case	ASTERISK: /* Readback (replay) current line at fast speed */
+		  	  case	READBKF: /* Readback (replay) current line at fast speed */
                   sprintf((char *) printBuffer, "Replay line (fast) %d\r\n", recallLineNumber);
                   HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
                   VFD_ClearDisplay();
@@ -653,7 +664,7 @@ int main(void)
 
 		  		break;
 
-		  	  case	HASH: /* Readback (replay) current line at normal speed */
+		  	  case	READBK: /* Readback (replay) current line at normal speed */
                   sprintf((char *) printBuffer, "Replay line (normal speed) %d\r\n", recallLineNumber);
                   HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
                   VFD_ClearDisplay();
@@ -664,7 +675,7 @@ int main(void)
 
 		  		break;
 
-		  	  case	ZERO: /* (ESCape) - return immediately to end of current line */
+		  	  case	ESCRB: /* (ESCapeReadBack) - return immediately to end of current line */
                   sprintf((char *) printBuffer, "Return to end of line %d\r\n", recallLineNumber);
                   HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
 		  		  HAL_TIM_Base_Stop_IT(&htim2); /* don't need the readback timer interrupt any more ... just recall the line */
@@ -673,7 +684,7 @@ int main(void)
 
 		  		break;
 
-		  	  case	ONE: /* scroll back PAGE_JUMP_SIZE lines */
+		  	  case	PAGEUP: /* scroll back PAGE_JUMP_SIZE lines */
                   if(recallLineNumber < PAGE_JUMP_SIZE) /* handle circular boundary */
                       recallLineNumber = (NUMBER_PAGES - 1) - (PAGE_JUMP_SIZE - recallLineNumber);
                   else
@@ -687,7 +698,7 @@ int main(void)
 
 		  		break;
 
-		  	  case	FOUR: /* scroll forward PAGE_JUMP_SIZE lines */
+		  	  case	PAGEDN: /* scroll forward PAGE_JUMP_SIZE lines */
                   if(recallLineNumber >= (NUMBER_PAGES - 1) - PAGE_JUMP_SIZE) /* handle circular boundary */
                       recallLineNumber = PAGE_JUMP_SIZE - ((NUMBER_PAGES - 1) - recallLineNumber);
                   else
@@ -701,7 +712,7 @@ int main(void)
 
 		  		break;
 
-		  	  case	TWO: /* return to the most recent line */
+		  	  case	GOHOME: /* GoHome ... return to the most recent line */
                   replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
                   recallLineNumber = VFD_ReturnHome(); /* VFD_ReturnHome prints latest line and returns line number */
                   sprintf((char *) printBuffer, "Return home - calling VFD_ReturnHome() ... returned line number %d\r\n", recallLineNumber);
@@ -709,7 +720,7 @@ int main(void)
 
 		  		break;
 
-		  	  case	FIVE: /* go directly to the oldest line/record */
+		  	  case	GOEND: /* GoToEnd ... go directly to the oldest line/record */
                   replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
                   recallLineNumber = VFD_GoToOldest(); /* VFD_GoToOldest searches/finds (then prints) oldest line in history and returns line number */
                   sprintf((char *) printBuffer, "END - calling VFD_GoToOldest() ... returned line number %d\r\n", recallLineNumber);
