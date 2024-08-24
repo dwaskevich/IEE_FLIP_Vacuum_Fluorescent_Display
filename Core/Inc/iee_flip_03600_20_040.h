@@ -43,6 +43,8 @@
 #define READBACK_TIMER_PERIOD           (10u * READBACK_SCROLL_DELAY_MS)
 #define FAST_READBACK_SCROLL_DELAY_MS   (20u)
 #define FAST_READBACK_TIMER_PERIOD      (10u * FAST_READBACK_SCROLL_DELAY_MS)
+#define SINGLE_STEP_DELAY_MS        	(100u)
+#define SINGLE_STEP_TIMER_PERIOD        (10u * SINGLE_STEP_DELAY_MS)
 
 /* useful constants */
 #define CR          (0x0d)

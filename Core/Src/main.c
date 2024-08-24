@@ -70,6 +70,12 @@
   *		- added 4x4 switch matrix
   *		- imported debounce library from https://github.com/tcleg/Button_Debouncer/tree/master
   *			-> note ... debounce library is an implementation of Jack Ganssle (https://www.ganssle.com/debouncing-pt2.htm)
+  *		- replaced cycle count delay with TIM4 delay function
+  *
+  * Update 23-Aug-2024:
+  *		- modified behavior of single-step readback
+  *			-> if held, single-step reads back characters at half the readback speed
+  *			-> when released, readback timer is stopped and reloaded with previous readback speed value
   *
   *
   */
@@ -132,9 +138,12 @@ volatile uint16_t headPointer = 0, tailPointer = 0; /* FIFO head and tail pointe
 uint8_t rxFIFO[UART_FIFO_SIZE]; /* Rx FIFO ... no rollover protection, older characters overwritten if FIFO fills */
 /* main loop decision flags */
 volatile bool timeoutFlag = false, readBackFlag = false, singleStepFlag = false, readButtonFlag = false;
+/* button processing variables */
 volatile uint8_t rawButtons0 = 0, rawButtons1 = 0;
 Debouncer buttons0;
 Debouncer buttons1;
+/* timer restore value */
+uint32_t timerRestorValue;
 
 /* Escape sequence state machine (decodes/parses multi-character keyboard escape sequences) */
 enum escSeqStates
@@ -583,19 +592,19 @@ int main(void)
 		  {
 		  	  case	NONE:
 
-		  		  break;
+		  		break;
 
 		  	  case	SCROLL_UP:
-		  		if(0 == recallLineNumber) /* handle circular boundary */
-				  recallLineNumber = NUMBER_PAGES - 1;
-		  		else
-				  recallLineNumber -= 1;
-		  		sprintf((char *) printBuffer, "Scroll up,    recall line\t... %3d\t", recallLineNumber);
-		  		HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
-		  		replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
-		  		str = VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
-		  		HAL_UART_Transmit(&huart1, str, strlen((char *) str), 100);
-		  		HAL_UART_Transmit(&huart1, (uint8_t*)"\r\n", 2, 100);
+		  		  if(0 == recallLineNumber) /* handle circular boundary */
+		  			  recallLineNumber = NUMBER_PAGES - 1;
+		  		  else
+		  			  recallLineNumber -= 1;
+		  		  sprintf((char *) printBuffer, "Scroll up,   recall line ... %3d  ", recallLineNumber);
+		  		  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
+		  		  replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
+		  		  str = VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
+		  		  HAL_UART_Transmit(&huart1, str, strlen((char *) str), 100);
+		  		  HAL_UART_Transmit(&huart1, (uint8_t*)"\r\n", 2, 100);
 
 		  		break;
 
@@ -604,7 +613,7 @@ int main(void)
                       recallLineNumber = 0;
                   else
                       recallLineNumber += 1;
-                  sprintf((char *) printBuffer, "Scroll down, recall line\t... %3d\t", recallLineNumber);
+                  sprintf((char *) printBuffer, "Scroll down, recall line ... %3d  ", recallLineNumber);
                   HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
                   replayCharNumber = INITIALIZE_REPLAY; /* indicates that single-step should start at 0 */
                   str = VFD_RecallLine(recallLineNumber); /* recall line from history and write it to display */
@@ -615,6 +624,10 @@ int main(void)
 
 		  	  case	SINGLE_STEP:
 				  HAL_TIM_Base_Stop_IT(&htim2); /* stop the readback timer */
+				  timerRestorValue = __HAL_TIM_GetAutoreload(&htim2); /* save timer value for later restore */
+                  __HAL_TIM_SetCounter(&htim2, 0); /* reset counter */
+                  __HAL_TIM_SetAutoreload(&htim2, SINGLE_STEP_TIMER_PERIOD); /* change readback speed */
+                  HAL_TIM_Base_Start_IT(&htim2); /* restart the timer */
 				  sprintf((char *) printBuffer, "Single stepping line number %d\r\n", recallLineNumber);
 				  HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
 				  singleStepFlag = true;
@@ -633,7 +646,7 @@ int main(void)
                   sprintf((char *) printBuffer, "Replay line (fast) %d\r\n", recallLineNumber);
                   HAL_UART_Transmit(&huart1, printBuffer, strlen((char *) printBuffer), 100);
                   VFD_ClearDisplay();
-                  __HAL_TIM_SetCounter(&htim2, 0);
+                  __HAL_TIM_SetCounter(&htim2, 0); /* reset counter */
                   __HAL_TIM_SetAutoreload(&htim2, FAST_READBACK_TIMER_PERIOD); /* change readback speed */
                   replayCharNumber = VFD_ReplayLine(recallLineNumber, 0); /* request to write character to display */
                   HAL_TIM_Base_Start_IT(&htim2); /* readBackFlag (set in readback timer isr) will request the next character */
@@ -708,11 +721,17 @@ int main(void)
 		  	  default:
 		  		HAL_UART_Transmit(&huart1, (uint8_t*)"Unassigned key\r\n", strlen((char *)"Unassigned key\r\n"), 100);
 
-		  		  break;
+		  		break;
 
 		  }
       }
 
+      if(ButtonReleased(&buttons1, (uint8_t) (SINGLE_STEP >> 8)))
+      {
+		  HAL_TIM_Base_Stop_IT(&htim2); /* stop the readback timer */
+		  __HAL_TIM_SetAutoreload(&htim2, timerRestorValue); /* restore timer value to what it was before single stepping */
+          __HAL_TIM_SetCounter(&htim2, 0); /* reset counter */
+      }
 
 
     /* USER CODE END WHILE */
