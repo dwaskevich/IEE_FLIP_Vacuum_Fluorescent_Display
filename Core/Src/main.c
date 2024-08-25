@@ -88,6 +88,13 @@
   *			-> when released, readback timer is stopped and reloaded with previous readback speed value
   *			-> press_and_release behaves the same (reads back one character for each button press)
   *
+  * Update 24-Aug-2024:
+  *		- fine tuned TIM4 delay function
+  *			-> TIM4 is on 72MHz bus
+  *			-> prescaler set to 18 (well, 18 - 1) ... 4MHz counter frequency
+  *			-> modified delay_us() function to account for 4MHz clock
+  *		- deactivated all column drivers in default switch condition
+  *
   *
   */
 /* USER CODE END Header */
@@ -123,7 +130,7 @@
 #define COLUMN_INACTIVE			(1u)
 #define COLUMN_ACTIVE			(0u)
 #define NUM_DISPLAY_COLUMNS		(9u)
-#define INTRA_COLUMN_DELAY		(1u)
+#define INTRA_COLUMN_DELAY_US	(2u)
 
 /* USER CODE END PD */
 
@@ -980,7 +987,7 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 36-1;
+  htim4.Init.Prescaler = 18-1;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim4.Init.Period = 65535;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -1122,8 +1129,11 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void delay_us(uint16_t delay)
 {
-	__HAL_TIM_SET_COUNTER(&htim4, 0);
-	while(__HAL_TIM_GET_COUNTER(&htim4) < delay);
+	if(delay < 1)
+		delay = 1;
+	else delay = (delay - 1) * 4;
+	__HAL_TIM_SetCounter(&htim4, 0);
+	while(__HAL_TIM_GetCounter(&htim4) < delay);
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
@@ -1176,7 +1186,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   				HAL_GPIO_WritePin(Col2_GPIO_Port, Col2_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col3_GPIO_Port, Col3_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col0_GPIO_Port, Col0_Pin, COLUMN_ACTIVE);
-  				delay_us(INTRA_COLUMN_DELAY);
+  				delay_us(INTRA_COLUMN_DELAY_US);
   				rawButtons0 = (!HAL_GPIO_ReadPin(Row0_GPIO_Port, Row0_Pin)) | (!HAL_GPIO_ReadPin(Row1_GPIO_Port, Row1_Pin)) << 1 | \
   						 (!HAL_GPIO_ReadPin(Row2_GPIO_Port, Row2_Pin)) << 2 | (!HAL_GPIO_ReadPin(Row3_GPIO_Port, Row3_Pin)) << 3;
 
@@ -1188,7 +1198,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   				HAL_GPIO_WritePin(Col2_GPIO_Port, Col2_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col3_GPIO_Port, Col3_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col1_GPIO_Port, Col1_Pin, COLUMN_ACTIVE);
-  				delay_us(INTRA_COLUMN_DELAY);
+  				delay_us(INTRA_COLUMN_DELAY_US);
   				rawButtons0 |= ((!HAL_GPIO_ReadPin(Row0_GPIO_Port, Row0_Pin)) | (!HAL_GPIO_ReadPin(Row1_GPIO_Port, Row1_Pin)) << 1 | \
   						 (!HAL_GPIO_ReadPin(Row2_GPIO_Port, Row2_Pin)) << 2 | (!HAL_GPIO_ReadPin(Row3_GPIO_Port, Row3_Pin)) << 3) << 4;
 
@@ -1200,7 +1210,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   				HAL_GPIO_WritePin(Col1_GPIO_Port, Col1_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col3_GPIO_Port, Col3_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col2_GPIO_Port, Col2_Pin, COLUMN_ACTIVE);
-  				delay_us(INTRA_COLUMN_DELAY);
+  				delay_us(INTRA_COLUMN_DELAY_US);
   				rawButtons1 = (!HAL_GPIO_ReadPin(Row0_GPIO_Port, Row0_Pin)) | (!HAL_GPIO_ReadPin(Row1_GPIO_Port, Row1_Pin)) << 1 | \
   						 (!HAL_GPIO_ReadPin(Row2_GPIO_Port, Row2_Pin)) << 2 | (!HAL_GPIO_ReadPin(Row3_GPIO_Port, Row3_Pin)) << 3;
 
@@ -1212,13 +1222,17 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   				HAL_GPIO_WritePin(Col1_GPIO_Port, Col1_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col2_GPIO_Port, Col2_Pin, COLUMN_INACTIVE);
   				HAL_GPIO_WritePin(Col3_GPIO_Port, Col3_Pin, COLUMN_ACTIVE);
-  				delay_us(INTRA_COLUMN_DELAY);
+  				delay_us(INTRA_COLUMN_DELAY_US);
   				rawButtons1 |= ((!HAL_GPIO_ReadPin(Row0_GPIO_Port, Row0_Pin)) | (!HAL_GPIO_ReadPin(Row1_GPIO_Port, Row1_Pin)) << 1 | \
   						 (!HAL_GPIO_ReadPin(Row2_GPIO_Port, Row2_Pin)) << 2 | (!HAL_GPIO_ReadPin(Row3_GPIO_Port, Row3_Pin)) << 3) << 4;
 
   				break;
 
   			default:
+  				HAL_GPIO_WritePin(Col0_GPIO_Port, Col0_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col1_GPIO_Port, Col1_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col2_GPIO_Port, Col2_Pin, COLUMN_INACTIVE);
+  				HAL_GPIO_WritePin(Col3_GPIO_Port, Col3_Pin, COLUMN_INACTIVE);
 
   				break;
   		}
